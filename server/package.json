@@ -1,0 +1,40 @@
+{
+  "name": "syncron-server",
+  "version": "1.0.0",
+  "description": "Smart Roster Management System - Backend & Database Schema",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/server.ts",
+    "start": "ts-node src/server.ts",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "prisma db seed",
+    "db:reset": "prisma migrate reset --force",
+    "verify": "ts-node scripts/verify-seed.ts",
+    "generate:december": "ts-node scripts/generate-december.ts",
+    "demo": "ts-node scripts/demo-flow.ts",
+    "test": "vitest run"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "cors": "^2.8.6",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.1",
+    "@types/supertest": "^7.2.1",
+    "prisma": "^5.22.0",
+    "supertest": "^7.3.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2",
+    "vitest": "^5.1.1"
+  }
+}
