@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment variables
+.env
+.env.local
+*.env
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+push-30-commits.ps1
+
+# Logs & scratch
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.system_generated/
+scratch/
+
+# OS files
+.DS_Store
+Thumbs.db
