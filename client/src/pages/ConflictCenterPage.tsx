@@ -13,6 +13,7 @@ export const ConflictCenterPage: React.FC = () => {
 
   // Filter states
   const [activeTab, setActiveTab] = useState<'OPEN' | 'RESOLVED'>('OPEN');
+  const [selectedSeverity, setSelectedSeverity] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('');
   const [selectedBrandId, setSelectedBrandId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -49,6 +50,9 @@ export const ConflictCenterPage: React.FC = () => {
   const openConflicts = allConflicts.filter((c) => c.status === 'OPEN');
   const resolvedConflicts = allConflicts.filter((c) => c.status === 'RESOLVED');
 
+  const openErrors = openConflicts.filter((c) => (c.severity || 'ERROR') === 'ERROR' && c.type !== 'PREFERENCE_VIOLATION');
+  const openWarnings = openConflicts.filter((c) => c.severity === 'WARNING' || c.type === 'PREFERENCE_VIOLATION');
+
   const coverageGapCount = openConflicts.filter((c) => c.type === 'COVERAGE_GAP').length;
   const insufficientStaffCount = openConflicts.filter((c) => c.type === 'INSUFFICIENT_STAFF').length;
   const overlapCount = openConflicts.filter((c) => c.type === 'OVERLAP').length;
@@ -57,6 +61,8 @@ export const ConflictCenterPage: React.FC = () => {
   const currentTabConflicts = activeTab === 'OPEN' ? openConflicts : resolvedConflicts;
 
   const filteredConflicts = currentTabConflicts.filter((c) => {
+    const sev = c.severity || (c.type === 'PREFERENCE_VIOLATION' ? 'WARNING' : 'ERROR');
+    if (selectedSeverity && sev !== selectedSeverity) return false;
     if (selectedType && c.type !== selectedType) return false;
     if (selectedBrandId && c.brandId !== selectedBrandId) return false;
     if (searchQuery.trim()) {
@@ -122,38 +128,38 @@ export const ConflictCenterPage: React.FC = () => {
 
       {/* KPI Severity Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-semibold uppercase text-slate-400 tracking-wider">
-              Total Open Issues
+            <span className="text-[11px] font-semibold uppercase text-rose-600 tracking-wider">
+              Critical Errors (Blocks Publish)
             </span>
-            <div className="text-2xl font-bold text-slate-900 mt-1">{openConflicts.length}</div>
+            <div className="text-2xl font-bold text-rose-700 mt-1">{openErrors.length}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+          <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-semibold uppercase text-amber-600 tracking-wider">
+              Soft Warnings (Non-blocking)
+            </span>
+            <div className="text-2xl font-bold text-amber-700 mt-1">{openWarnings.length}</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
             <ShieldAlert className="w-5 h-5" />
           </div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-semibold uppercase text-rose-500 tracking-wider">
+            <span className="text-[11px] font-semibold uppercase text-slate-500 tracking-wider">
               Coverage Gaps (0 Staff)
             </span>
-            <div className="text-2xl font-bold text-rose-700 mt-1">{coverageGapCount}</div>
+            <div className="text-2xl font-bold text-slate-900 mt-1">{coverageGapCount}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-semibold uppercase text-amber-500 tracking-wider">
-              Staff Shortages
-            </span>
-            <div className="text-2xl font-bold text-amber-700 mt-1">{insufficientStaffCount}</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
             <Filter className="w-5 h-5" />
           </div>
         </div>
@@ -186,6 +192,17 @@ export const ConflictCenterPage: React.FC = () => {
             />
           </div>
 
+          {/* Severity dropdown */}
+          <select
+            value={selectedSeverity}
+            onChange={(e) => setSelectedSeverity(e.target.value)}
+            className="text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="">All Severities</option>
+            <option value="ERROR">Errors (Blocking)</option>
+            <option value="WARNING">Warnings (Soft)</option>
+          </select>
+
           {/* Type dropdown */}
           <select
             value={selectedType}
@@ -197,6 +214,7 @@ export const ConflictCenterPage: React.FC = () => {
             <option value="INSUFFICIENT_STAFF">Insufficient Staff</option>
             <option value="OVERLAP">Multi-Brand Overlap</option>
             <option value="LEAVE_CONFLICT">Leave Conflict</option>
+            <option value="PREFERENCE_VIOLATION">Preference Violation (Soft)</option>
           </select>
 
           {/* Brand dropdown */}

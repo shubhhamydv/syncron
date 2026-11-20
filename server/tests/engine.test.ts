@@ -568,4 +568,94 @@ describe('Scheduling Engine & Validator Tests', () => {
       }
     }
   });
+
+  describe('Preferences as Soft Constraints', () => {
+    it('honors preferred off day when an alternative candidate exists', () => {
+      const fixture = createBaseFixture();
+      // Brand Alpha CS needs 1 staff, assigned to e1 and e2
+      // e1 prefers Wednesday off (dayOfWeek: 3)
+      fixture.preferences = [
+        { employeeId: 'e1', type: 'PREFERRED_OFF_DAY', dayOfWeek: 3, note: 'Prefers Wed off' },
+      ];
+
+      const output = generateRoster(fixture);
+
+      // Dec 2, 2026 is a Wednesday (day 3)
+      const wedEntryE1 = output.entries.find((e) => e.employeeId === 'e1' && e.date === '2026-12-02');
+      const wedEntryE2 = output.entries.find((e) => e.employeeId === 'e2' && e.date === '2026-12-02');
+
+      // e2 should work, e1 should be given off
+      expect(wedEntryE2?.status).toBe('WORKING');
+      expect(wedEntryE1?.status).not.toBe('WORKING');
+
+      // No PREFERENCE_VIOLATION should be emitted for e1
+      const prefViolations = output.conflicts.filter(
+        (c) => c.date === '2026-12-02' && c.type === 'PREFERENCE_VIOLATION'
+      );
+      expect(prefViolations.length).toBe(0);
+    });
+
+    it('forces mandatory coverage and emits PREFERENCE_VIOLATION warning when no alternative exists', () => {
+      const fixture = createBaseFixture();
+      // Brand Beta CS needs 1 staff, sole resource is e3
+      // e3 prefers Wednesday off (dayOfWeek: 3)
+      fixture.preferences = [
+        { employeeId: 'e3', type: 'PREFERRED_OFF_DAY', dayOfWeek: 3, note: 'Prefers Wed off' },
+      ];
+
+      const output = generateRoster(fixture);
+
+      // Dec 2, 2026 is Wednesday
+      const wedEntryE3 = output.entries.find((e) => e.employeeId === 'e3' && e.date === '2026-12-02');
+      expect(wedEntryE3?.status).toBe('WORKING');
+
+      // Emits PREFERENCE_VIOLATION with severity: 'WARNING'
+      const warnings = output.conflicts.filter(
+        (c) => c.date === '2026-12-02' && c.brandId === 'b2' && c.type === 'PREFERENCE_VIOLATION'
+      );
+      expect(warnings.length).toBe(1);
+      expect(warnings[0].severity).toBe('WARNING');
+      expect(warnings[0].message).toContain('Rohan Iyer prefers day 3 off');
+
+      // Parity check: validateRoster re-derives the exact same warning
+      const valConflicts = validateRoster(fixture, output.entries);
+      const valWarnings = valConflicts.filter(
+        (c) => c.date === '2026-12-02' && c.brandId === 'b2' && c.type === 'PREFERENCE_VIOLATION'
+      );
+      expect(valWarnings.length).toBe(1);
+      expect(valWarnings[0].severity).toBe('WARNING');
+    });
+
+    it('preferences never override hard constraints like approved leave', () => {
+      const fixture = createBaseFixture();
+      // e2 is on approved leave on Dec 2
+      fixture.availabilities.push({
+        employeeId: 'e2',
+        type: 'LEAVE',
+        startDate: '2026-12-02',
+        endDate: '2026-12-02',
+        status: 'APPROVED',
+      });
+      // e1 prefers Wednesday off
+      fixture.preferences = [
+        { employeeId: 'e1', type: 'PREFERRED_OFF_DAY', dayOfWeek: 3 },
+      ];
+
+      const output = generateRoster(fixture);
+
+      // e2 cannot work (hard constraint). e1 must work (mandatory coverage overrides preference)
+      const e2Entry = output.entries.find((e) => e.employeeId === 'e2' && e.date === '2026-12-02');
+      const e1Entry = output.entries.find((e) => e.employeeId === 'e1' && e.date === '2026-12-02');
+
+      expect(e2Entry?.status).toBe('LEAVE');
+      expect(e1Entry?.status).toBe('WORKING');
+
+      // Warning emitted for e1
+      const e1Warning = output.conflicts.find(
+        (c) => c.date === '2026-12-02' && c.brandId === 'b1' && c.type === 'PREFERENCE_VIOLATION'
+      );
+      expect(e1Warning).toBeDefined();
+      expect(e1Warning?.severity).toBe('WARNING');
+    });
+  });
 });

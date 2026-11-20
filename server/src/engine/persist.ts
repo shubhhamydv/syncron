@@ -81,6 +81,7 @@ export async function persistRoster(
           brandId: c.brandId,
           processId: c.processId,
           type: c.type,
+          severity: (c.severity || (c.type === 'PREFERENCE_VIOLATION' ? 'WARNING' : 'ERROR')) as any,
           requiredStaff: c.requiredStaff,
           availableStaff: c.availableStaff,
           message: c.message,

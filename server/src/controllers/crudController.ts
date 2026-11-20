@@ -307,10 +307,59 @@ export class CrudController {
     }
   }
 
+  static async updatePublicHoliday(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await CrudService.updatePublicHoliday(getId(req), req.body));
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async deletePublicHoliday(req: Request, res: Response, next: NextFunction) {
     try {
       await CrudService.deletePublicHoliday(getId(req));
       res.status(204).send();
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  // Employee Preferences
+  static async listPreferences(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await CrudService.listPreferences(getId(req));
+      res.json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async createPreference(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await CrudService.createPreference(getId(req), req.body);
+      res.status(201).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async updatePreference(req: Request, res: Response, next: NextFunction) {
+    try {
+      const prefId = req.params.prefId;
+      const targetId = Array.isArray(prefId) ? prefId[0] : prefId;
+      const data = await CrudService.updatePreference(targetId, req.body);
+      res.json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async deletePreference(req: Request, res: Response, next: NextFunction) {
+    try {
+      const prefId = req.params.prefId;
+      const targetId = Array.isArray(prefId) ? prefId[0] : prefId;
+      const data = await CrudService.deletePreference(targetId);
+      res.json(data);
     } catch (e) {
       next(e);
     }

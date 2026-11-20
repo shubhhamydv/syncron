@@ -23,6 +23,7 @@ export async function loadEngineInput(
     coverageRequirements,
     availabilities,
     holidays,
+    preferences,
   ] = await Promise.all([
     prisma.brand.findMany(),
     prisma.process.findMany(),
@@ -32,6 +33,7 @@ export async function loadEngineInput(
     prisma.coverageRequirement.findMany(),
     prisma.employeeAvailability.findMany(),
     prisma.publicHoliday.findMany(),
+    prisma.employeePreference.findMany(),
   ]);
 
   return {
@@ -89,6 +91,13 @@ export async function loadEngineInput(
       date: toDateString(h.date),
       name: h.name,
       region: h.region,
+    })),
+    preferences: preferences.map((p) => ({
+      id: p.id,
+      employeeId: p.employeeId,
+      type: p.type as 'PREFERRED_OFF_DAY',
+      dayOfWeek: p.dayOfWeek,
+      note: p.note,
     })),
   };
 }

@@ -212,15 +212,37 @@ export class RosterService {
       },
     });
 
-    // Group working entries by "date_brandId_processId"
-    const allocatedMap = new Map<string, Array<{ id: string; name: string }>>();
-    for (const w of workingEntries) {
-      if (!w.brandId || !w.processId) continue;
-      const key = `${toDateString(w.date)}_${w.brandId}_${w.processId}`;
-      if (!allocatedMap.has(key)) {
-        allocatedMap.set(key, []);
+    // Pre-calculate single-resource brands
+    const brandDistinctEmployees = new Map<string, Set<string>>();
+    for (const a of input.assignments) {
+      if (!brandDistinctEmployees.has(a.brandId)) {
+        brandDistinctEmployees.set(a.brandId, new Set());
       }
-      allocatedMap.get(key)!.push({ id: w.employee.id, name: w.employee.name });
+      brandDistinctEmployees.get(a.brandId)!.add(a.employeeId);
+    }
+    const isSingleResourceBrand = (brandId: string) => {
+      const emps = brandDistinctEmployees.get(brandId);
+      return emps !== undefined && emps.size === 1;
+    };
+
+    // Group working entries by "date_brandId_processId" and "date_brandId"
+    const allocatedMap = new Map<string, Array<{ id: string; name: string }>>();
+    const brandDayAllocatedMap = new Map<string, Array<{ id: string; name: string }>>();
+    for (const w of workingEntries) {
+      if (!w.brandId) continue;
+      const brandKey = `${toDateString(w.date)}_${w.brandId}`;
+      if (!brandDayAllocatedMap.has(brandKey)) {
+        brandDayAllocatedMap.set(brandKey, []);
+      }
+      brandDayAllocatedMap.get(brandKey)!.push({ id: w.employee.id, name: w.employee.name });
+
+      if (w.processId) {
+        const key = `${toDateString(w.date)}_${w.brandId}_${w.processId}`;
+        if (!allocatedMap.has(key)) {
+          allocatedMap.set(key, []);
+        }
+        allocatedMap.get(key)!.push({ id: w.employee.id, name: w.employee.name });
+      }
     }
 
     const brandViewResults = [];
@@ -228,7 +250,13 @@ export class RosterService {
       const dailyReqs = resolveDailyRequirements(dateStr, input);
       for (const req of dailyReqs) {
         const key = `${dateStr}_${req.brandId}_${req.processId}`;
-        const allocatedEmployees = allocatedMap.get(key) || [];
+        let allocatedEmployees = allocatedMap.get(key) || [];
+        if (allocatedEmployees.length === 0 && isSingleResourceBrand(req.brandId)) {
+          const brandEmps = brandDayAllocatedMap.get(`${dateStr}_${req.brandId}`) || [];
+          if (brandEmps.length > 0) {
+            allocatedEmployees = brandEmps;
+          }
+        }
         const allocated = allocatedEmployees.length;
 
         let coverageStatus: 'OK' | 'GAP' | 'PARTIAL' = 'OK';
@@ -256,16 +284,119 @@ export class RosterService {
   }
 
   /**
+   * Gets process-centric operational view of the roster:
+   * Process -> Daily totals (required, allocated, status) -> Brand drilldown.
+   */
+  static async getProcessView(rosterId: string) {
+    const brandViewData = await this.getBrandView(rosterId);
+    const processes = await prisma.process.findMany({ orderBy: { name: 'asc' } });
+
+    // Group brand view results by processId -> date
+    const processMap = new Map<string, Map<string, any[]>>();
+    for (const b of brandViewData) {
+      if (!processMap.has(b.processId)) {
+        processMap.set(b.processId, new Map());
+      }
+      const dateMap = processMap.get(b.processId)!;
+      if (!dateMap.has(b.date)) {
+        dateMap.set(b.date, []);
+      }
+      dateMap.get(b.date)!.push(b);
+    }
+
+    return processes.map((proc) => {
+      const dateMap = processMap.get(proc.id) || new Map();
+      const dailyBreakdown: any[] = [];
+
+      for (const [date, brands] of dateMap.entries()) {
+        const required = brands.reduce((sum: number, b: any) => sum + b.required, 0);
+        const allocated = brands.reduce((sum: number, b: any) => sum + b.allocated, 0);
+        let status: 'OK' | 'GAP' | 'PARTIAL' = 'OK';
+        if (allocated === 0 && required > 0) status = 'GAP';
+        else if (allocated < required) status = 'PARTIAL';
+
+        dailyBreakdown.push({
+          date,
+          required,
+          allocated,
+          status,
+          brands,
+        });
+      }
+
+      dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date));
+
+      return {
+        processId: proc.id,
+        processName: proc.name,
+        days: dailyBreakdown,
+      };
+    });
+  }
+
+  /**
+   * Gets pod-centric operational view of the roster:
+   * Pod -> Lead -> Members with shift count & coverage summary.
+   */
+  static async getPodView(rosterId: string) {
+    const roster = await prisma.roster.findUnique({ where: { id: rosterId } });
+    if (!roster) throw new AppError(404, 'NOT_FOUND', 'Roster not found.');
+
+    const pods = await prisma.pod.findMany({
+      include: {
+        lead: { select: { id: true, name: true, email: true } },
+        members: {
+          select: { id: true, name: true, email: true },
+          orderBy: { name: 'asc' },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const workingEntries = await prisma.rosterEntry.findMany({
+      where: { rosterId, status: 'WORKING' },
+      select: { employeeId: true },
+    });
+
+    const shiftCountMap = new Map<string, number>();
+    for (const w of workingEntries) {
+      shiftCountMap.set(w.employeeId, (shiftCountMap.get(w.employeeId) || 0) + 1);
+    }
+
+    return pods.map((pod) => {
+      const memberDetails = pod.members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        isLead: pod.lead?.id === m.id,
+        workingDaysCount: shiftCountMap.get(m.id) || 0,
+      }));
+
+      const totalShifts = memberDetails.reduce((sum, m) => sum + m.workingDaysCount, 0);
+
+      return {
+        podId: pod.id,
+        podName: pod.name,
+        lead: pod.lead,
+        members: memberDetails,
+        totalMembers: memberDetails.length,
+        totalShifts,
+      };
+    });
+  }
+
+  /**
    * Lists conflicts with optional filters.
    */
   static async getConflicts(
     rosterId: string,
-    filter: { status?: 'OPEN' | 'RESOLVED'; type?: any; brandId?: string }
+    filter: { status?: 'OPEN' | 'RESOLVED'; type?: any; brandId?: string; severity?: any }
   ) {
     const where: Prisma.ConflictWhereInput = { rosterId };
     if (filter.status) where.status = filter.status;
     if (filter.type) where.type = filter.type;
     if (filter.brandId) where.brandId = filter.brandId;
+    if (filter.severity) where.severity = filter.severity;
 
     return await prisma.conflict.findMany({
       where,
@@ -278,21 +409,22 @@ export class RosterService {
   }
 
   /**
-   * Publishes a roster. Rejects with 409 if open conflicts exist unless force === true.
+   * Publishes a roster. Rejects with 409 if open ERROR conflicts exist unless force === true.
+   * Warnings never block publishing.
    */
   static async publish(rosterId: string, force = false) {
     const roster = await prisma.roster.findUnique({ where: { id: rosterId } });
     if (!roster) throw new AppError(404, 'NOT_FOUND', 'Roster not found.');
 
-    const openCount = await prisma.conflict.count({
-      where: { rosterId, status: 'OPEN' },
+    const openErrorCount = await prisma.conflict.count({
+      where: { rosterId, status: 'OPEN', severity: 'ERROR' },
     });
 
-    if (openCount > 0 && !force) {
+    if (openErrorCount > 0 && !force) {
       throw new AppError(
         409,
         'ROSTER_HAS_OPEN_CONFLICTS',
-        `Cannot publish roster with ${openCount} open conflict(s). Set { force: true } to publish anyway.`
+        `Cannot publish roster with ${openErrorCount} open error conflict(s). Set { force: true } to publish anyway.`
       );
     }
 
@@ -414,8 +546,19 @@ export class RosterService {
 
     const targetEmpId = data.employeeId || entry.employeeId;
     const targetStatus = data.status || entry.status;
-    const targetBrandId = data.brandId !== undefined ? data.brandId : entry.brandId;
-    const targetProcessId = data.processId !== undefined ? data.processId : entry.processId;
+    let targetBrandId = data.brandId !== undefined ? data.brandId : entry.brandId;
+    let targetProcessId = data.processId !== undefined ? data.processId : entry.processId;
+
+    if (targetStatus === 'WORKING' && (!targetBrandId || !targetProcessId)) {
+      const firstAssignment = await prisma.assignment.findFirst({
+        where: { employeeId: targetEmpId },
+      });
+      if (firstAssignment) {
+        if (!targetBrandId) targetBrandId = firstAssignment.brandId;
+        if (!targetProcessId) targetProcessId = firstAssignment.processId;
+      }
+    }
+
     const dateStr = toDateString(entry.date);
 
     // Hard constraint validation if attempting to set status to WORKING without override
@@ -564,17 +707,13 @@ export class RosterService {
     const input = await loadEngineInput(prisma, year, month);
     const dates = monthDates(year, month);
 
+    const brandViewData = await this.getBrandView(roster.id);
     let requiredSlots = 0;
-    for (const d of dates) {
-      const reqs = resolveDailyRequirements(d, input);
-      for (const r of reqs) {
-        requiredSlots += r.minimumStaff;
-      }
+    let filledSlots = 0;
+    for (const b of brandViewData) {
+      requiredSlots += b.required;
+      filledSlots += Math.min(b.allocated, b.required);
     }
-
-    const filledSlots = await prisma.rosterEntry.count({
-      where: { rosterId: roster.id, status: 'WORKING' },
-    });
 
     const openConflicts = await prisma.conflict.groupBy({
       by: ['type'],

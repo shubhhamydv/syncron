@@ -64,6 +64,24 @@ export class RosterController {
     }
   }
 
+  static async getProcessView(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await RosterService.getProcessView(getId(req));
+      res.json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async getPodView(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await RosterService.getPodView(getId(req));
+      res.json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async getConflicts(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await RosterService.getConflicts(getId(req), req.query as any);

@@ -62,6 +62,28 @@ export function generateRoster(input: EngineInput): EngineOutput {
     workingDaysCount.set(emp.id, 0);
   }
 
+  // Pre-calculate single-resource brands: count of distinct assigned employees across all assignments == 1
+  const brandDistinctEmployees = new Map<string, Set<string>>();
+  for (const a of input.assignments) {
+    if (!brandDistinctEmployees.has(a.brandId)) {
+      brandDistinctEmployees.set(a.brandId, new Set());
+    }
+    brandDistinctEmployees.get(a.brandId)!.add(a.employeeId);
+  }
+  const isSingleResourceBrand = (brandId: string) => {
+    const emps = brandDistinctEmployees.get(brandId);
+    return emps !== undefined && emps.size === 1;
+  };
+
+  // Map employee preferences
+  const empPreferences = new Map<string, typeof input.preferences>();
+  for (const p of input.preferences || []) {
+    if (!empPreferences.has(p.employeeId)) {
+      empPreferences.set(p.employeeId, []);
+    }
+    empPreferences.get(p.employeeId)!.push(p);
+  }
+
   const entries: RosterEntryDraft[] = [];
   const conflicts: ConflictDraft[] = [];
 
@@ -120,18 +142,35 @@ export function generateRoster(input: EngineInput): EngineOutput {
         if (unavail === null && !alreadyWorking) {
           availableCandidates.push(empId);
         } else if (unavail === null && alreadyWorking) {
-          overlapBlockedEmps.push(emp.name);
           const prior = assignedToday.get(empId)!;
-          const priorBrandName = brandMap.get(prior.brandId)?.name || prior.brandId;
-          const priorProcName = processMap.get(prior.processId)?.name || prior.processId;
-          unavailableReasons.push(`${emp.name} is already working on ${priorBrandName} ${priorProcName}`);
+          if (isSingleResourceBrand(req.brandId) && prior.brandId === req.brandId) {
+            // Sole employee of single-resource brand is already active on this brand today.
+            // In a single-resource brand, the sole employee handles all assigned processes.
+            availableCandidates.push(empId);
+          } else {
+            overlapBlockedEmps.push(emp.name);
+            const priorBrandName = brandMap.get(prior.brandId)?.name || prior.brandId;
+            const priorProcName = processMap.get(prior.processId)?.name || prior.processId;
+            unavailableReasons.push(`${emp.name} is already working on ${priorBrandName} ${priorProcName}`);
+          }
         } else if (unavail !== null) {
           unavailableReasons.push(`${emp.name} is unavailable (${unavail.type}: ${unavail.reason})`);
         }
       }
 
-      // Sort candidates by fewest working days this month, tie-break by ID
+      // Sort candidates:
+      // 1. Fewest preference violations (0 if no PREFERRED_OFF_DAY on today's weekday, 1 if preferred off today)
+      // 2. Fewest working days this month
+      // 3. Employee ID (alphabetical)
       availableCandidates.sort((a, b) => {
+        const prefViolA = (empPreferences.get(a) || []).some(
+          (p: any) => p.type === 'PREFERRED_OFF_DAY' && p.dayOfWeek === weekday
+        ) ? 1 : 0;
+        const prefViolB = (empPreferences.get(b) || []).some(
+          (p: any) => p.type === 'PREFERRED_OFF_DAY' && p.dayOfWeek === weekday
+        ) ? 1 : 0;
+        if (prefViolA !== prefViolB) return prefViolA - prefViolB;
+
         const countA = workingDaysCount.get(a) || 0;
         const countB = workingDaysCount.get(b) || 0;
         if (countA !== countB) return countA - countB;
@@ -141,16 +180,36 @@ export function generateRoster(input: EngineInput): EngineOutput {
       // Pick up to minimumStaff
       const selected = availableCandidates.slice(0, req.minimumStaff);
       for (const empId of selected) {
-        assignedToday.set(empId, { brandId: req.brandId, processId: req.processId });
-        workingDaysCount.set(empId, (workingDaysCount.get(empId) || 0) + 1);
+        if (!assignedToday.has(empId)) {
+          assignedToday.set(empId, { brandId: req.brandId, processId: req.processId });
+          workingDaysCount.set(empId, (workingDaysCount.get(empId) || 0) + 1);
 
-        entries.push({
-          employeeId: empId,
-          brandId: req.brandId,
-          processId: req.processId,
-          date: dateStr,
-          status: 'WORKING',
-        });
+          entries.push({
+            employeeId: empId,
+            brandId: req.brandId,
+            processId: req.processId,
+            date: dateStr,
+            status: 'WORKING',
+          });
+
+          // Soft Constraint: If assignment forced violation of employee's preferred off day, emit warning
+          const violatedPref = (empPreferences.get(empId) || []).find(
+            (p: any) => p.type === 'PREFERRED_OFF_DAY' && p.dayOfWeek === weekday
+          );
+          if (violatedPref) {
+            const emp = employeeMap.get(empId);
+            conflicts.push({
+              date: dateStr,
+              brandId: req.brandId,
+              processId: req.processId,
+              type: 'PREFERENCE_VIOLATION',
+              severity: 'WARNING',
+              requiredStaff: req.minimumStaff,
+              availableStaff: selected.length,
+              message: `Preference warning: ${emp?.name || empId} prefers day ${weekday} off, but was scheduled for mandatory coverage on ${req.brandName} ${req.processName} on ${dateStr}.`,
+            });
+          }
+        }
       }
 
       // If requirements were not fully satisfied, emit a conflict
@@ -247,13 +306,13 @@ export function generateRoster(input: EngineInput): EngineOutput {
     return a.processId.localeCompare(b.processId);
   });
 
-  // Invariant Assertion: At most one conflict per (date, brand, process) requirement
+  // Invariant Assertion: At most one conflict per (date, brand, process, severity) requirement
   const conflictKeys = new Set<string>();
   for (const c of conflicts) {
-    const key = `${c.date}_${c.brandId}_${c.processId}`;
+    const key = `${c.date}_${c.brandId}_${c.processId}_${c.severity || 'ERROR'}`;
     if (conflictKeys.has(key)) {
       throw new Error(
-        `Generator Invariant Violation: At most one conflict allowed per (date, brand, process). Found duplicate on ${key} (${c.type}).`
+        `Generator Invariant Violation: At most one conflict allowed per (date, brand, process, severity). Found duplicate on ${key} (${c.type}).`
       );
     }
     conflictKeys.add(key);
@@ -265,6 +324,7 @@ export function generateRoster(input: EngineInput): EngineOutput {
     INSUFFICIENT_STAFF: 0,
     OVERLAP: 0,
     LEAVE_CONFLICT: 0,
+    PREFERENCE_VIOLATION: 0,
   };
   for (const c of conflicts) {
     conflictsByType[c.type] = (conflictsByType[c.type] || 0) + 1;

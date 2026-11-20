@@ -10,6 +10,7 @@ import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { parseUTCDate, toDateString } from '../engine';
 import { RosterService } from './rosterService';
+import { computeChangeImpact } from './impactService';
 
 export class CrudService {
   // ---------------------------------------------------------------------------
@@ -288,11 +289,33 @@ export class CrudService {
         'Assignment for this employee, brand, and process already exists.'
       );
     }
-    return await prisma.assignment.create({ data });
+    return await prisma.$transaction(async (tx) => {
+      const created = await tx.assignment.create({ data });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      return { assignment: created, syncResults };
+    });
   }
 
   static async deleteAssignment(id: string) {
-    return await prisma.assignment.delete({ where: { id } });
+    return await prisma.$transaction(async (tx) => {
+      const deleted = await tx.assignment.delete({ where: { id } });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      return { assignment: deleted, syncResults };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -367,25 +390,53 @@ export class CrudService {
     date?: string | null;
     dayOfWeek?: number | null;
   }) {
-    return await prisma.coverageRequirement.create({
-      data: {
-        brandId: data.brandId,
-        processId: data.processId,
-        minimumStaff: data.minimumStaff,
-        date: data.date ? parseUTCDate(data.date) : null,
-        dayOfWeek: data.dayOfWeek,
-      },
+    return await prisma.$transaction(async (tx) => {
+      const created = await tx.coverageRequirement.create({
+        data: {
+          brandId: data.brandId,
+          processId: data.processId,
+          minimumStaff: data.minimumStaff,
+          date: data.date ? parseUTCDate(data.date) : null,
+          dayOfWeek: data.dayOfWeek,
+        },
+      });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      let impact: any[] = [];
+      const primaryDraft = draftRosters[0];
+      if (primaryDraft && data.date) {
+        impact = await computeChangeImpact(tx as any, primaryDraft.id, {
+          dates: [data.date],
+          brandIds: [data.brandId],
+          processIds: [data.processId],
+        });
+      }
+
+      return { requirement: created, syncResults, impact };
     });
   }
 
-  static async updateCoverageRequirement(id: string, data: { minimumStaff?: number }) {
+  static async updateCoverageRequirement(
+    id: string,
+    data: { minimumStaff?: number; date?: string | null; dayOfWeek?: number | null }
+  ) {
     const req = await prisma.coverageRequirement.findUnique({ where: { id } });
     if (!req) throw new AppError(404, 'NOT_FOUND', 'Coverage requirement not found.');
 
     return await prisma.$transaction(async (tx) => {
       const updated = await tx.coverageRequirement.update({
         where: { id },
-        data: { minimumStaff: data.minimumStaff },
+        data: {
+          minimumStaff: data.minimumStaff,
+          date: data.date !== undefined ? (data.date ? parseUTCDate(data.date) : null) : undefined,
+          dayOfWeek: data.dayOfWeek !== undefined ? data.dayOfWeek : undefined,
+        },
       });
 
       // Synchronize all open DRAFT rosters
@@ -395,12 +446,49 @@ export class CrudService {
         const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
         syncResults.push(...res);
       }
-      return { requirement: updated, syncResults };
+
+      let impact: any[] = [];
+      const primaryDraft = draftRosters[0];
+      const targetDate = data.date || (req.date ? toDateString(req.date) : null);
+      if (primaryDraft && targetDate) {
+        impact = await computeChangeImpact(tx as any, primaryDraft.id, {
+          dates: [targetDate],
+          brandIds: [req.brandId],
+          processIds: [req.processId],
+        });
+      }
+
+      return { requirement: updated, syncResults, impact };
     });
   }
 
   static async deleteCoverageRequirement(id: string) {
-    return await prisma.coverageRequirement.delete({ where: { id } });
+    const req = await prisma.coverageRequirement.findUnique({ where: { id } });
+    if (!req) throw new AppError(404, 'NOT_FOUND', 'Coverage requirement not found.');
+
+    return await prisma.$transaction(async (tx) => {
+      await tx.coverageRequirement.delete({ where: { id } });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      let impact: any[] = [];
+      const primaryDraft = draftRosters[0];
+      const targetDate = req.date ? toDateString(req.date) : null;
+      if (primaryDraft && targetDate) {
+        impact = await computeChangeImpact(tx as any, primaryDraft.id, {
+          dates: [targetDate],
+          brandIds: [req.brandId],
+          processIds: [req.processId],
+        });
+      }
+
+      return { success: true, syncResults, impact };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -483,7 +571,23 @@ export class CrudService {
         }
       }
 
-      return { availability: created, syncResults };
+      // Calculate change impact summary
+      let impact: any[] = [];
+      const primaryDraft = await tx.roster.findFirst({ where: { status: 'DRAFT' }, orderBy: { year: 'desc' } });
+      if (primaryDraft) {
+        const dates: string[] = [];
+        if (data.startDate && data.endDate) {
+          let curr = parseUTCDate(data.startDate);
+          const end = parseUTCDate(data.endDate);
+          while (curr <= end) {
+            dates.push(toDateString(curr));
+            curr = new Date(curr.getTime() + 24 * 60 * 60 * 1000);
+          }
+        }
+        impact = await computeChangeImpact(tx as any, primaryDraft.id, { dates });
+      }
+
+      return { availability: created, syncResults, impact };
     });
   }
 
@@ -528,7 +632,20 @@ export class CrudService {
         syncResults.push(...syncRes);
       }
 
-      return { availability: updated, syncResults };
+      let impact: any[] = [];
+      const primaryDraft = draftRosters[0];
+      if (primaryDraft && newStart && newEnd) {
+        const dates: string[] = [];
+        let curr = parseUTCDate(newStart);
+        const end = parseUTCDate(newEnd);
+        while (curr <= end) {
+          dates.push(toDateString(curr));
+          curr = new Date(curr.getTime() + 24 * 60 * 60 * 1000);
+        }
+        impact = await computeChangeImpact(tx as any, primaryDraft.id, { dates });
+      }
+
+      return { availability: updated, syncResults, impact };
     });
   }
 
@@ -605,12 +722,99 @@ export class CrudService {
         syncResults.push(...syncRes);
       }
 
+      let impact: any[] = [];
+      const primaryDraft = draftRosters[0];
+      if (primaryDraft && existing.startDate && existing.endDate) {
+        const dates: string[] = [];
+        let curr = parseUTCDate(toDateString(existing.startDate));
+        const end = parseUTCDate(toDateString(existing.endDate));
+        while (curr <= end) {
+          dates.push(toDateString(curr));
+          curr = new Date(curr.getTime() + 24 * 60 * 60 * 1000);
+        }
+        impact = await computeChangeImpact(tx as any, primaryDraft.id, { dates });
+      }
+
+      return { success: true, syncResults, impact };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // EMPLOYEE PREFERENCES
+  // ---------------------------------------------------------------------------
+  static async listPreferences(employeeId: string) {
+    return await prisma.employeePreference.findMany({
+      where: { employeeId },
+      orderBy: { dayOfWeek: 'asc' },
+    });
+  }
+
+  static async createPreference(employeeId: string, data: { type?: any; dayOfWeek: number; note?: string | null }) {
+    const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!emp) throw new AppError(404, 'NOT_FOUND', 'Employee not found.');
+
+    return await prisma.$transaction(async (tx) => {
+      const created = await tx.employeePreference.create({
+        data: {
+          employeeId,
+          type: data.type || 'PREFERRED_OFF_DAY',
+          dayOfWeek: data.dayOfWeek,
+          note: data.note,
+        },
+      });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      return { preference: created, syncResults };
+    });
+  }
+
+  static async updatePreference(id: string, data: { dayOfWeek?: number; note?: string | null }) {
+    const existing = await prisma.employeePreference.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, 'NOT_FOUND', 'Preference not found.');
+
+    return await prisma.$transaction(async (tx) => {
+      const updated = await tx.employeePreference.update({
+        where: { id },
+        data,
+      });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      return { preference: updated, syncResults };
+    });
+  }
+
+  static async deletePreference(id: string) {
+    const existing = await prisma.employeePreference.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, 'NOT_FOUND', 'Preference not found.');
+
+    return await prisma.$transaction(async (tx) => {
+      await tx.employeePreference.delete({ where: { id } });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
       return { success: true, syncResults };
     });
   }
 
   // ---------------------------------------------------------------------------
-  // PUBLIC HOLIDAYS
+  // PUBLIC HOLIDAYS (With sync hook)
   // ---------------------------------------------------------------------------
   static async listPublicHolidays() {
     return await prisma.publicHoliday.findMany({ orderBy: { date: 'asc' } });
@@ -627,16 +831,67 @@ export class CrudService {
       throw new AppError(409, 'DUPLICATE_HOLIDAY', 'Holiday for this date and region already exists.');
     }
 
-    return await prisma.publicHoliday.create({
-      data: {
-        date: d,
-        name: data.name,
-        region,
-      },
+    return await prisma.$transaction(async (tx) => {
+      const holiday = await tx.publicHoliday.create({
+        data: {
+          date: d,
+          name: data.name,
+          region,
+        },
+      });
+
+      // Synchronize affected draft rosters
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      return { holiday, syncResults };
+    });
+  }
+
+  static async updatePublicHoliday(id: string, data: { date?: string; name?: string; region?: string }) {
+    const existing = await prisma.publicHoliday.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, 'NOT_FOUND', 'Public holiday not found.');
+
+    return await prisma.$transaction(async (tx) => {
+      const updated = await tx.publicHoliday.update({
+        where: { id },
+        data: {
+          name: data.name,
+          region: data.region,
+          date: data.date ? parseUTCDate(data.date) : undefined,
+        },
+      });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      return { holiday: updated, syncResults };
     });
   }
 
   static async deletePublicHoliday(id: string) {
-    return await prisma.publicHoliday.delete({ where: { id } });
+    const existing = await prisma.publicHoliday.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, 'NOT_FOUND', 'Public holiday not found.');
+
+    return await prisma.$transaction(async (tx) => {
+      await tx.publicHoliday.delete({ where: { id } });
+
+      const draftRosters = await tx.roster.findMany({ where: { status: 'DRAFT' } });
+      const syncResults = [];
+      for (const r of draftRosters) {
+        const res = await RosterService.syncAffectedDraftRosters(tx, r.month, r.year);
+        syncResults.push(...res);
+      }
+
+      return { success: true, syncResults };
+    });
   }
 }

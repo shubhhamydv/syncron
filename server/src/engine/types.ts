@@ -8,7 +8,21 @@ export type BrandStatusType = 'ACTIVE' | 'INACTIVE';
 export type AvailabilityTypeEnum = 'WEEKLY_OFF' | 'LEAVE' | 'COMP_OFF';
 export type AvailabilityStatusEnum = 'APPROVED' | 'PENDING';
 export type EntryStatusType = 'WORKING' | 'WEEKLY_OFF' | 'LEAVE' | 'COMP_OFF' | 'HOLIDAY_OFF';
-export type ConflictTypeEnum = 'COVERAGE_GAP' | 'LEAVE_CONFLICT' | 'INSUFFICIENT_STAFF' | 'OVERLAP';
+export type ConflictTypeEnum =
+  | 'COVERAGE_GAP'
+  | 'LEAVE_CONFLICT'
+  | 'INSUFFICIENT_STAFF'
+  | 'OVERLAP'
+  | 'PREFERENCE_VIOLATION';
+export type ConflictSeverityEnum = 'ERROR' | 'WARNING';
+
+export interface EmployeePreferenceData {
+  id?: string;
+  employeeId: string;
+  type: 'PREFERRED_OFF_DAY';
+  dayOfWeek?: number | null; // 0=Sun..6=Sat
+  note?: string | null;
+}
 
 export interface BrandData {
   id: string;
@@ -82,6 +96,7 @@ export interface EngineInput {
   coverageRequirements: CoverageRequirementData[];
   availabilities: AvailabilityData[];
   holidays: HolidayData[];
+  preferences?: EmployeePreferenceData[];
 }
 
 export interface DailyRequirement {
@@ -105,6 +120,7 @@ export interface ConflictDraft {
   brandId: string;
   processId: string;
   type: ConflictTypeEnum;
+  severity?: ConflictSeverityEnum;
   requiredStaff: number;
   availableStaff: number;
   message: string;

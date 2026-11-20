@@ -74,7 +74,10 @@ export type ConflictTypeEnum =
   | 'COVERAGE_GAP'
   | 'INSUFFICIENT_STAFF'
   | 'OVERLAP'
-  | 'LEAVE_CONFLICT';
+  | 'LEAVE_CONFLICT'
+  | 'PREFERENCE_VIOLATION';
+
+export type ConflictSeverityEnum = 'ERROR' | 'WARNING';
 
 export type AvailabilityTypeEnum = 'WEEKLY_OFF' | 'LEAVE' | 'COMP_OFF';
 export type AvailabilityStatusEnum = 'APPROVED' | 'PENDING';
@@ -194,6 +197,7 @@ export interface Conflict {
   brandId: string;
   processId: string;
   type: ConflictTypeEnum;
+  severity?: ConflictSeverityEnum;
   requiredStaff: number;
   availableStaff: number;
   message: string;
@@ -201,6 +205,31 @@ export interface Conflict {
   resolvedAt?: string | null;
   brand?: { id: string; name: string };
   process?: { id: string; name: string };
+}
+
+export interface EmployeePreference {
+  id: string;
+  employeeId: string;
+  type: 'PREFERRED_OFF_DAY';
+  dayOfWeek: number;
+  note?: string | null;
+  createdAt?: string;
+}
+
+export interface ChangeImpactItem {
+  date: string;
+  brandId: string;
+  brandName: string;
+  processId: string;
+  processName: string;
+  requiredStaff: number;
+  allocatedBefore: number;
+  allocatedBeforeEmployees?: string[];
+  allocatedAfter: number;
+  allocatedAfterEmployees?: string[];
+  status: 'STILL_COVERED' | 'PARTIAL' | 'GAP';
+  employeeNames?: string[];
+  required?: number;
 }
 
 export interface ReplacementCandidate {
@@ -219,6 +248,7 @@ export interface MutationResult {
   openedConflicts?: Conflict[];
   resolvedConflicts?: Conflict[];
   totalOpen?: number;
+  impact?: ChangeImpactItem[];
   syncResults?: Array<{
     rosterId: string;
     openedConflicts: Conflict[];
@@ -253,6 +283,37 @@ export interface BrandViewRow {
   allocated: number;
   coverageStatus: 'OK' | 'GAP' | 'PARTIAL';
   employees: Array<{ id: string; name: string }>;
+}
+
+export interface PodViewMember {
+  id: string;
+  name: string;
+  email: string;
+  isLead: boolean;
+  workingDaysCount: number;
+}
+
+export interface PodViewItem {
+  podId: string;
+  podName: string;
+  lead: { id: string; name: string; email: string } | null;
+  members: PodViewMember[];
+  totalMembers: number;
+  totalShifts: number;
+}
+
+export interface ProcessViewDay {
+  date: string;
+  required: number;
+  allocated: number;
+  status: 'OK' | 'GAP' | 'PARTIAL';
+  brands: BrandViewRow[];
+}
+
+export interface ProcessViewItem {
+  processId: string;
+  processName: string;
+  days: ProcessViewDay[];
 }
 
 export interface DashboardData {
@@ -315,6 +376,12 @@ export const api = {
 
   getBrandView: (rosterId: string) =>
     request<BrandViewRow[]>(`/rosters/${rosterId}/brand-view`),
+
+  getPodView: (rosterId: string) =>
+    request<PodViewItem[]>(`/rosters/${rosterId}/pod-view`),
+
+  getProcessView: (rosterId: string) =>
+    request<ProcessViewItem[]>(`/rosters/${rosterId}/process-view`),
 
   getConflicts: (rosterId: string, params?: { status?: string; type?: string; brandId?: string }) => {
     const qs = new URLSearchParams();
@@ -484,10 +551,28 @@ export const api = {
       method: 'DELETE',
     }),
 
+  // Preferences (Soft Constraints)
+  getPreferences: (employeeId: string) =>
+    request<EmployeePreference[]>(`/employees/${employeeId}/preferences`),
+  createPreference: (
+    employeeId: string,
+    data: { type: 'PREFERRED_OFF_DAY'; dayOfWeek: number; note?: string }
+  ) =>
+    request<EmployeePreference>(`/employees/${employeeId}/preferences`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  deletePreference: (employeeId: string, preferenceId: string) =>
+    request<{ success: boolean }>(`/employees/${employeeId}/preferences/${preferenceId}`, {
+      method: 'DELETE',
+    }),
+
   // Public Holidays
   getPublicHolidays: () => request<PublicHoliday[]>('/public-holidays'),
   createPublicHoliday: (data: { date: string; name: string; region?: string }) =>
     request<PublicHoliday>('/public-holidays', { method: 'POST', body: JSON.stringify(data) }),
+  updatePublicHoliday: (id: string, data: { date?: string; name?: string; region?: string }) =>
+    request<PublicHoliday>(`/public-holidays/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deletePublicHoliday: (id: string) =>
     request<{ success: boolean }>(`/public-holidays/${id}`, { method: 'DELETE' }),
 };

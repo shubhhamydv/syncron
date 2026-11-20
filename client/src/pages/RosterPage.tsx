@@ -4,24 +4,37 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiException } from '@/lib/api';
 import { getMonthDays } from '@/lib/dates';
 import { useToast } from '@/context/ToastContext';
-import { RosterHeader } from '@/components/roster/RosterHeader';
+import { RosterHeader, RosterViewMode } from '@/components/roster/RosterHeader';
 import { EmployeeGrid } from '@/components/roster/EmployeeGrid';
 import { BrandGridView } from '@/components/roster/BrandGridView';
+import { PodGridView } from '@/components/roster/PodGridView';
+import { ProcessGridView } from '@/components/roster/ProcessGridView';
+import { SingleEmployeeCalendarView } from '@/components/roster/SingleEmployeeCalendarView';
 import { ShiftDetailDrawer, SelectedShiftCell } from '@/components/roster/ShiftDetailDrawer';
 import { GenerateConfirmModal } from '@/components/roster/GenerateConfirmModal';
 import { PublishModal } from '@/components/roster/PublishModal';
 import { AlertCircle, Calendar } from 'lucide-react';
 
 export const RosterPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   const month = parseInt(searchParams.get('month') || '12', 10);
   const year = parseInt(searchParams.get('year') || '2026', 10);
 
-  // View state
-  const [viewMode, setViewMode] = useState<'employee' | 'brand'>('employee');
+  // URL-synchronized view mode
+  const rawView = searchParams.get('view') || 'company';
+  const viewMode: RosterViewMode = (['company', 'pod', 'brand', 'process', 'employee'].includes(rawView)
+    ? rawView
+    : 'company') as RosterViewMode;
+
+  const setViewMode = (mode: RosterViewMode) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('view', mode);
+    setSearchParams(next);
+  };
+
   const [selectedPodId, setSelectedPodId] = useState<string>('');
   const [selectedBrandId, setSelectedBrandId] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
@@ -47,7 +60,7 @@ export const RosterPage: React.FC = () => {
 
   const roster = rosters?.[0] || null;
 
-  // Query: Employee Grid View
+  // Query: Employee Grid View (Company / Employee)
   const {
     data: employeeRows = [],
     isLoading: isLoadingEmployeeView,
@@ -67,6 +80,28 @@ export const RosterPage: React.FC = () => {
     queryKey: ['brandView', roster?.id],
     queryFn: () => api.getBrandView(roster!.id),
     enabled: !!roster?.id && viewMode === 'brand',
+  });
+
+  // Query: Pod Operational View
+  const {
+    data: podViewData = [],
+    isLoading: isLoadingPodView,
+    refetch: refetchPodView,
+  } = useQuery({
+    queryKey: ['podView', roster?.id],
+    queryFn: () => api.getPodView(roster!.id),
+    enabled: !!roster?.id && viewMode === 'pod',
+  });
+
+  // Query: Process Operational View
+  const {
+    data: processViewData = [],
+    isLoading: isLoadingProcessView,
+    refetch: refetchProcessView,
+  } = useQuery({
+    queryKey: ['processView', roster?.id],
+    queryFn: () => api.getProcessView(roster!.id),
+    enabled: !!roster?.id && viewMode === 'process',
   });
 
   // Query: Conflicts for badge and drawer
@@ -148,6 +183,8 @@ export const RosterPage: React.FC = () => {
     refetchRoster();
     refetchEmployeeView();
     refetchBrandView();
+    refetchPodView();
+    refetchProcessView();
     refetchConflicts();
   };
 
@@ -231,7 +268,7 @@ export const RosterPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {viewMode === 'employee' ? (
+          {viewMode === 'company' && (
             isLoadingEmployeeView ? (
               <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
                 <p className="text-sm">Loading employee schedule grid...</p>
@@ -243,13 +280,45 @@ export const RosterPage: React.FC = () => {
                 onSelectCell={setSelectedCell}
               />
             )
-          ) : (
+          )}
+
+          {viewMode === 'pod' && (
+            isLoadingPodView ? (
+              <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+                <p className="text-sm">Loading pod-centric roster summary...</p>
+              </div>
+            ) : (
+              <PodGridView podData={podViewData} />
+            )
+          )}
+
+          {viewMode === 'brand' && (
             isLoadingBrandView ? (
               <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
                 <p className="text-sm">Loading brand operational requirements...</p>
               </div>
             ) : (
               <BrandGridView days={days} brandViewData={brandViewData} />
+            )
+          )}
+
+          {viewMode === 'process' && (
+            isLoadingProcessView ? (
+              <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+                <p className="text-sm">Loading process operations matrix...</p>
+              </div>
+            ) : (
+              <ProcessGridView processData={processViewData} />
+            )
+          )}
+
+          {viewMode === 'employee' && (
+            isLoadingEmployeeView ? (
+              <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+                <p className="text-sm">Loading employee timeline calendar...</p>
+              </div>
+            ) : (
+              <SingleEmployeeCalendarView rows={employeeRows} conflicts={conflicts} />
             )
           )}
         </>

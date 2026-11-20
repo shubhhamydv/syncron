@@ -78,6 +78,7 @@ export async function syncConflicts(
           brandId: fresh.brandId,
           processId: fresh.processId,
           type: fresh.type,
+          severity: (fresh.severity || (fresh.type === 'PREFERENCE_VIOLATION' ? 'WARNING' : 'ERROR')) as any,
           requiredStaff: fresh.requiredStaff,
           availableStaff: fresh.availableStaff,
           message: fresh.message,
@@ -91,6 +92,7 @@ export async function syncConflicts(
         where: { id: existing.id },
         data: {
           status: 'OPEN',
+          severity: (fresh.severity || (fresh.type === 'PREFERENCE_VIOLATION' ? 'WARNING' : 'ERROR')) as any,
           resolvedAt: null,
           message: fresh.message,
           requiredStaff: fresh.requiredStaff,

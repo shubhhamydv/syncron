@@ -67,7 +67,11 @@ export const DashboardPage: React.FC = () => {
     INSUFFICIENT_STAFF: '#d97706', // amber-600
     OVERLAP: '#7c3aed', // purple-600
     LEAVE_CONFLICT: '#ea580c', // orange-600
+    PREFERENCE_VIOLATION: '#f59e0b', // amber-500
   };
+
+  const openErrors = openConflicts.filter((c) => (c.severity || 'ERROR') === 'ERROR' && c.type !== 'PREFERENCE_VIOLATION');
+  const openWarnings = openConflicts.filter((c) => c.severity === 'WARNING' || c.type === 'PREFERENCE_VIOLATION');
 
   const chartData = Object.entries(dash?.openConflictsByType || {}).map(([key, val]) => ({
     name: key.replace(/_/g, ' '),
@@ -159,13 +163,13 @@ export const DashboardPage: React.FC = () => {
         {/* Open Conflicts Card */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-semibold uppercase tracking-wider">Open Conflicts</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Open Issues</span>
             <AlertTriangle className="w-4 h-4 text-rose-600" />
           </div>
           <div className="flex items-baseline justify-between">
             <span
               className={`text-3xl font-bold ${
-                openConflicts.length > 0 ? 'text-rose-600' : 'text-emerald-600'
+                openErrors.length > 0 ? 'text-rose-600' : 'text-emerald-600'
               }`}
             >
               {openConflicts.length}
@@ -178,8 +182,8 @@ export const DashboardPage: React.FC = () => {
               <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          <p className="text-[11px] text-slate-400">
-            {dash?.resolvedConflicts || 0} conflicts successfully resolved this month.
+          <p className="text-[11px] text-slate-500 font-medium">
+            <span className="text-rose-600 font-bold">{openErrors.length} Errors</span> • <span className="text-amber-600 font-bold">{openWarnings.length} Warnings</span> ({dash?.resolvedConflicts || 0} resolved)
           </p>
         </div>
 

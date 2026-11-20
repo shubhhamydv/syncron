@@ -82,6 +82,7 @@ export const ConflictDrawer: React.FC<ConflictDrawerProps> = ({
         </div>
         <button
           onClick={onClose}
+          aria-label="Close"
           className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-100 transition-colors"
         >
           <X className="w-5 h-5" />
@@ -134,6 +135,13 @@ export const ConflictDrawer: React.FC<ConflictDrawerProps> = ({
             <span className="font-semibold text-slate-900 block mb-1">Conflict Diagnosis:</span>
             {conflict.message}
           </div>
+
+          {conflict.severity === 'WARNING' && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs leading-relaxed">
+              <span className="font-semibold block mb-0.5">Soft Constraint Warning</span>
+              This preference violation does not block roster publishing. Mandatory coverage takes precedence over employee preferred off days.
+            </div>
+          )}
 
           {isResolved && conflict.resolvedAt && (
             <div className="flex items-center gap-1.5 text-xs text-emerald-700 pt-1">

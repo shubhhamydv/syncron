@@ -136,8 +136,8 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
       expect(res.body.roster.month).toBe(12);
       expect(res.body.roster.year).toBe(2026);
       expect(res.body.roster.status).toBe('DRAFT');
-      expect(res.body.stats.totalEntries).toBe(1116);
-      expect(res.body.conflictsCount).toBe(18);
+      expect(res.body.stats.totalEntries).toBe(1054);
+      expect(res.body.conflictsCount).toBe(34);
 
       rosterId = res.body.roster.id;
     });
@@ -150,8 +150,8 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.roster.id).toBe(rosterId);
-      expect(res.body.stats.totalEntries).toBe(1116);
-      expect(res.body.conflictsCount).toBe(18);
+      expect(res.body.stats.totalEntries).toBe(1054);
+      expect(res.body.conflictsCount).toBe(34);
     });
   });
 
@@ -286,7 +286,7 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
       });
 
       expect(openDbConflicts.length).toBe(validatorConflicts.length);
-      expect(openDbConflicts.length).toBe(17); // 18 original - 1 resolved
+      expect(openDbConflicts.length).toBe(33); // 34 original - 1 resolved
     });
   });
 
@@ -542,7 +542,7 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
       const res = await request(app).get(`/api/rosters/${rosterId}/employee-view`);
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBe(36); // 36 employees
+      expect(res.body.length).toBe(34); // 34 employees
 
       const firstEmp = res.body[0];
       expect(firstEmp).toHaveProperty('employee');
@@ -563,11 +563,30 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
       expect(statuses.has('GAP')).toBe(true);
     });
 
+    it('GET /api/rosters/:id/pod-view returns 5 pods with lead and members', async () => {
+      const res = await request(app).get(`/api/rosters/${rosterId}/pod-view`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBe(5);
+      expect(res.body[0]).toHaveProperty('podName');
+      expect(res.body[0]).toHaveProperty('members');
+      expect(res.body[0]).toHaveProperty('totalShifts');
+    });
+
+    it('GET /api/rosters/:id/process-view returns daily totals and brand drilldowns', async () => {
+      const res = await request(app).get(`/api/rosters/${rosterId}/process-view`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBe(6);
+      expect(res.body[0]).toHaveProperty('processName');
+      expect(res.body[0]).toHaveProperty('days');
+    });
+
     it('GET /api/dashboard returns high level KPI metrics', async () => {
       const res = await request(app).get('/api/dashboard?month=12&year=2026');
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('employees', 36);
-      expect(res.body).toHaveProperty('brands', 15);
+      expect(res.body).toHaveProperty('employees', 34);
+      expect(res.body).toHaveProperty('brands', 25);
       expect(res.body).toHaveProperty('pods', 5);
       expect(res.body).toHaveProperty('processes', 6);
       expect(res.body).toHaveProperty('requiredSlots');
@@ -602,8 +621,8 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('success', true);
-      expect(res.body).toHaveProperty('conflictsCount', 18);
-      expect(res.body).toHaveProperty('totalEntries', 1116);
+      expect(res.body).toHaveProperty('conflictsCount', 34);
+      expect(res.body).toHaveProperty('totalEntries', 1054);
     });
   });
 });

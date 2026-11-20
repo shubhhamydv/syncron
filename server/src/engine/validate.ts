@@ -11,7 +11,7 @@
 
 import { ConflictDraft, ConflictTypeEnum, EngineInput, RosterEntryDraft } from './types';
 import { getUnavailability } from './availability';
-import { monthDates, toDateString } from './dates';
+import { getUTCDayOfWeek, monthDates, toDateString } from './dates';
 import { resolveDailyRequirements } from './requirements';
 
 export function validateRoster(input: EngineInput, entries: RosterEntryDraft[]): ConflictDraft[] {
@@ -40,9 +40,31 @@ export function validateRoster(input: EngineInput, entries: RosterEntryDraft[]):
     entriesByDate.get(d)!.push(entry);
   }
 
+  // Pre-calculate single-resource brands: count of distinct assigned employees across all assignments == 1
+  const brandDistinctEmployees = new Map<string, Set<string>>();
+  for (const a of input.assignments) {
+    if (!brandDistinctEmployees.has(a.brandId)) {
+      brandDistinctEmployees.set(a.brandId, new Set());
+    }
+    brandDistinctEmployees.get(a.brandId)!.add(a.employeeId);
+  }
+  const isSingleResourceBrand = (brandId: string) => {
+    const emps = brandDistinctEmployees.get(brandId);
+    return emps !== undefined && emps.size === 1;
+  };
+
+  const empPreferences = new Map<string, typeof input.preferences>();
+  for (const p of input.preferences || []) {
+    if (!empPreferences.has(p.employeeId)) {
+      empPreferences.set(p.employeeId, []);
+    }
+    empPreferences.get(p.employeeId)!.push(p);
+  }
+
   const conflicts: ConflictDraft[] = [];
 
   for (const dateStr of dates) {
+    const weekday = getUTCDayOfWeek(dateStr);
     const dayEntries = entriesByDate.get(dateStr) || [];
     const workingEntries = dayEntries.filter((e) => e.status === 'WORKING');
 
@@ -83,17 +105,28 @@ export function validateRoster(input: EngineInput, entries: RosterEntryDraft[]):
       if (emp) {
         const unavail = getUnavailability(emp, dateStr, input.availabilities);
         if (unavail && (unavail.type === 'LEAVE' || unavail.type === 'COMP_OFF')) {
-          const brandName = brandMap.get(w.brandId || '')?.name || w.brandId;
-          const procName = processMap.get(w.processId || '')?.name || w.processId;
-          conflicts.push({
-            date: dateStr,
-            brandId: w.brandId || '',
-            processId: w.processId || '',
-            type: 'LEAVE_CONFLICT',
-            requiredStaff: 1,
-            availableStaff: 0,
-            message: `Leave violation: ${emp.name} is scheduled to work on ${brandName} ${procName} on ${dateStr} while on approved ${unavail.type}: ${unavail.reason}.`,
-          });
+          let bId = w.brandId;
+          let pId = w.processId;
+          if (!bId || !pId) {
+            const firstAssn = input.assignments.find((a) => a.employeeId === emp.id);
+            if (firstAssn) {
+              bId = bId || firstAssn.brandId;
+              pId = pId || firstAssn.processId;
+            }
+          }
+          if (bId && pId) {
+            const brandName = brandMap.get(bId)?.name || bId;
+            const procName = processMap.get(pId)?.name || pId;
+            conflicts.push({
+              date: dateStr,
+              brandId: bId,
+              processId: pId,
+              type: 'LEAVE_CONFLICT',
+              requiredStaff: 1,
+              availableStaff: 0,
+              message: `Leave violation: ${emp.name} is scheduled to work on ${brandName} ${procName} on ${dateStr} while on approved ${unavail.type}: ${unavail.reason}.`,
+            });
+          }
         }
       }
     }
@@ -106,9 +139,15 @@ export function validateRoster(input: EngineInput, entries: RosterEntryDraft[]):
       const assignedEmpIds = brandProcessAssignments.get(bpKey) || [];
 
       // Count working entries allocated to this brand+process
-      const allocatedEntries = workingEntries.filter(
-        (e) => e.brandId === req.brandId && e.processId === req.processId
-      );
+      const allocatedEntries = workingEntries.filter((e) => {
+        if (e.brandId !== req.brandId) return false;
+        if (e.processId === req.processId) return true;
+        // In a single-resource brand, the sole employee handles all assigned processes
+        if (isSingleResourceBrand(req.brandId) && brandProcessAssignments.get(bpKey)?.includes(e.employeeId)) {
+          return true;
+        }
+        return false;
+      });
       const allocatedStaff = allocatedEntries.length;
 
       if (allocatedStaff < req.minimumStaff) {
@@ -190,15 +229,48 @@ export function validateRoster(input: EngineInput, entries: RosterEntryDraft[]):
         });
       }
     }
+
+    // 4. Check Preference Violations (Warning)
+    for (const w of workingEntries) {
+      const emp = employeeMap.get(w.employeeId);
+      if (!emp) continue;
+      const violatedPref = (empPreferences.get(w.employeeId) || []).find(
+        (p: any) => p.type === 'PREFERRED_OFF_DAY' && p.dayOfWeek === weekday
+      );
+      if (violatedPref && w.brandId && w.processId) {
+        const brandName = brandMap.get(w.brandId)?.name || w.brandId;
+        const procName = processMap.get(w.processId)?.name || w.processId;
+        const matchingReq = dailyReqs.find((r) => r.brandId === w.brandId && r.processId === w.processId);
+        const reqStaff = matchingReq ? matchingReq.minimumStaff : 1;
+        const bpKey = `${w.brandId}:${w.processId}`;
+        const allocatedCount = workingEntries.filter(
+          (e) =>
+            e.brandId === w.brandId &&
+            (e.processId === w.processId ||
+              (isSingleResourceBrand(w.brandId!) && brandProcessAssignments.get(bpKey)?.includes(e.employeeId)))
+        ).length;
+
+        conflicts.push({
+          date: dateStr,
+          brandId: w.brandId,
+          processId: w.processId,
+          type: 'PREFERENCE_VIOLATION',
+          severity: 'WARNING',
+          requiredStaff: reqStaff,
+          availableStaff: allocatedCount,
+          message: `Preference warning: ${emp.name} prefers day ${weekday} off, but was scheduled for mandatory coverage on ${brandName} ${procName} on ${dateStr}.`,
+        });
+      }
+    }
   }
 
-  // Invariant Assertion: At most one conflict per (date, brand, process) requirement
+  // Invariant Assertion: At most one conflict per (date, brand, process, severity) requirement
   const conflictKeys = new Set<string>();
   for (const c of conflicts) {
-    const key = `${c.date}_${c.brandId}_${c.processId}`;
+    const key = `${c.date}_${c.brandId}_${c.processId}_${c.severity || 'ERROR'}`;
     if (conflictKeys.has(key)) {
       throw new Error(
-        `Validator Invariant Violation: At most one conflict allowed per (date, brand, process). Found duplicate on ${key} (${c.type}).`
+        `Validator Invariant Violation: At most one conflict allowed per (date, brand, process, severity). Found duplicate on ${key} (${c.type}).`
       );
     }
     conflictKeys.add(key);

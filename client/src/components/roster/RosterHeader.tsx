@@ -1,11 +1,13 @@
 import React from 'react';
-import { Search, RefreshCw, Send, Users, Building2 } from 'lucide-react';
+import { Search, RefreshCw, Send, Users, Building2, Building, ShieldCheck, Layers, User } from 'lucide-react';
 import { Pod, Brand, Roster } from '@/lib/api';
+
+export type RosterViewMode = 'company' | 'pod' | 'brand' | 'process' | 'employee';
 
 interface RosterHeaderProps {
   roster: Roster | null;
-  viewMode: 'employee' | 'brand';
-  setViewMode: (mode: 'employee' | 'brand') => void;
+  viewMode: RosterViewMode;
+  setViewMode: (mode: RosterViewMode) => void;
   onOpenGenerate: () => void;
   onOpenPublish: () => void;
   isGenerating: boolean;
@@ -47,32 +49,71 @@ export const RosterHeader: React.FC<RosterHeaderProps> = ({
     <div className="space-y-4">
       {/* Top Bar: Action Buttons & View Mode Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-        {/* Left: View Switcher */}
-        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg border border-slate-200 w-fit">
+        {/* Left: 5 View Switchers */}
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
           <button
             type="button"
-            onClick={() => setViewMode('employee')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-              viewMode === 'employee'
+            onClick={() => setViewMode('company')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              viewMode === 'company'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>Employee Grid</span>
+            <Building className="w-3.5 h-3.5" />
+            <span>Company</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('pod')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              viewMode === 'pod'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Pod</span>
           </button>
 
           <button
             type="button"
             onClick={() => setViewMode('brand')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               viewMode === 'brand'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Building2 className="w-4 h-4" />
-            <span>Brand Operational View</span>
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Brand</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('process')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              viewMode === 'process'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Process</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('employee')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              viewMode === 'employee'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>Employee</span>
           </button>
         </div>
 

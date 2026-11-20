@@ -47,10 +47,34 @@ async function run() {
 
   // 4. Assert Exact Conflict Parity between Generator and Validator
   console.log('\n[4] Asserting parity between generator conflicts and validator conflicts...');
+  console.log('Validator preference violations:');
+  for (const c of validationConflicts.filter(c => c.type === 'PREFERENCE_VIOLATION')) {
+    console.log(`  Val: ${c.date} | ${c.brandId} | ${c.processId} | ${c.message}`);
+  }
+  console.log('Generator preference violations:');
+  for (const c of output.conflicts.filter(c => c.type === 'PREFERENCE_VIOLATION')) {
+    console.log(`  Gen: ${c.date} | ${c.brandId} | ${c.processId} | ${c.message}`);
+  }
   if (output.conflicts.length !== validationConflicts.length) {
     console.error(
       `PARITY FAILURE: Generator emitted ${output.conflicts.length} conflicts, but Validator detected ${validationConflicts.length} conflicts!`
     );
+    const genKeys = new Set(output.conflicts.map(c => `${c.date}|${c.brandId}|${c.processId}|${c.type}|${c.severity || 'ERROR'}`));
+    const valKeys = new Set(validationConflicts.map(c => `${c.date}|${c.brandId}|${c.processId}|${c.type}|${c.severity || 'ERROR'}`));
+    console.log('\nIn Generator but not in Validator:');
+    for (const c of output.conflicts) {
+      const k = `${c.date}|${c.brandId}|${c.processId}|${c.type}|${c.severity || 'ERROR'}`;
+      if (!valKeys.has(k)) {
+        console.log(`  + ${k}: ${c.message}`);
+      }
+    }
+    console.log('\nIn Validator but not in Generator:');
+    for (const c of validationConflicts) {
+      const k = `${c.date}|${c.brandId}|${c.processId}|${c.type}|${c.severity || 'ERROR'}`;
+      if (!genKeys.has(k)) {
+        console.log(`  + ${k}: ${c.message}`);
+      }
+    }
     process.exit(1);
   }
 

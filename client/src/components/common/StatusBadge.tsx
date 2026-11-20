@@ -58,6 +58,10 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       badgeStyle = 'bg-rose-100 text-rose-900 border-rose-400 font-semibold';
       displayLabel = 'Leave Conflict';
       break;
+    case 'PREFERENCE_VIOLATION':
+      badgeStyle = 'bg-amber-100 text-amber-900 border-amber-300 font-semibold';
+      displayLabel = 'Preference Warning';
+      break;
     case 'OK':
       badgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
       displayLabel = 'OK';

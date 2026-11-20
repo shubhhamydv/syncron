@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PublicHoliday, api } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
-import { Plus, Trash2, Calendar, MapPin } from 'lucide-react';
+import { Plus, Trash2, Calendar, MapPin, Edit3 } from 'lucide-react';
 import { formatWeekdayDate } from '@/lib/dates';
 
 interface HolidaysManagerProps {
@@ -15,31 +15,50 @@ export const HolidaysManager: React.FC<HolidaysManagerProps> = ({
 }) => {
   const { showToast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [date, setDate] = useState('2026-12-25');
   const [name, setName] = useState('');
   const [region, setRegion] = useState('National');
   const [isPending, setIsPending] = useState(false);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const startEdit = (h: PublicHoliday) => {
+    setEditingId(h.id);
+    setDate(h.date.split('T')[0]);
+    setName(h.name);
+    setRegion(h.region);
+    setShowAdd(true);
+  };
+
+  const handleCreateOrUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     setIsPending(true);
     try {
-      await api.createPublicHoliday({ date, name, region });
-      showToast({
-        type: 'success',
-        title: 'Public Holiday Added',
-        message: `${name} on ${date} added successfully.`,
-      });
+      if (editingId) {
+        await api.updatePublicHoliday(editingId, { date, name, region });
+        showToast({
+          type: 'success',
+          title: 'Public Holiday Updated',
+          message: `${name} updated successfully.`,
+        });
+      } else {
+        await api.createPublicHoliday({ date, name, region });
+        showToast({
+          type: 'success',
+          title: 'Public Holiday Added',
+          message: `${name} on ${date} added successfully.`,
+        });
+      }
       setShowAdd(false);
+      setEditingId(null);
       setName('');
       onSuccess();
     } catch (err: any) {
       showToast({
         type: 'error',
-        title: 'Creation Failed',
-        message: err.message || 'Could not add public holiday.',
+        title: 'Operation Failed',
+        message: err.message || 'Could not save public holiday.',
       });
     } finally {
       setIsPending(false);
@@ -78,7 +97,18 @@ export const HolidaysManager: React.FC<HolidaysManagerProps> = ({
 
         <button
           type="button"
-          onClick={() => setShowAdd(!showAdd)}
+          onClick={() => {
+            if (showAdd) {
+              setShowAdd(false);
+              setEditingId(null);
+            } else {
+              setEditingId(null);
+              setDate('2026-12-25');
+              setName('');
+              setRegion('National');
+              setShowAdd(true);
+            }
+          }}
           className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors self-start"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -86,14 +116,14 @@ export const HolidaysManager: React.FC<HolidaysManagerProps> = ({
         </button>
       </div>
 
-      {/* Add Holiday Form */}
+      {/* Add / Edit Holiday Form */}
       {showAdd && (
         <form
-          onSubmit={handleCreate}
+          onSubmit={handleCreateOrUpdate}
           className="p-5 bg-slate-50 rounded-xl border border-indigo-200 space-y-4 shadow-inner"
         >
           <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide">
-            Add Public Holiday
+            {editingId ? 'Edit Public Holiday' : 'Add Public Holiday'}
           </h4>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -142,7 +172,10 @@ export const HolidaysManager: React.FC<HolidaysManagerProps> = ({
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              onClick={() => setShowAdd(false)}
+              onClick={() => {
+                setShowAdd(false);
+                setEditingId(null);
+              }}
               className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-200 rounded-lg"
             >
               Cancel
@@ -152,7 +185,7 @@ export const HolidaysManager: React.FC<HolidaysManagerProps> = ({
               disabled={isPending}
               className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs disabled:opacity-50"
             >
-              {isPending ? 'Saving...' : 'Add Holiday'}
+              {isPending ? 'Saving...' : editingId ? 'Update Holiday' : 'Add Holiday'}
             </button>
           </div>
         </form>
@@ -179,14 +212,24 @@ export const HolidaysManager: React.FC<HolidaysManagerProps> = ({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => handleDelete(h.id)}
-              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-              title="Delete holiday"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => startEdit(h)}
+                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                title="Edit holiday"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(h.id)}
+                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                title="Delete holiday"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         ))}
       </div>

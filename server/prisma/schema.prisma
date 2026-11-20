@@ -46,6 +46,16 @@ enum ConflictType {
   LEAVE_CONFLICT
   INSUFFICIENT_STAFF
   OVERLAP
+  PREFERENCE_VIOLATION
+}
+
+enum ConflictSeverity {
+  ERROR
+  WARNING
+}
+
+enum PreferenceType {
+  PREFERRED_OFF_DAY
 }
 
 enum ConflictStatus {
@@ -77,6 +87,7 @@ model Employee {
   ledPod         Pod?                 @relation("PodLead")
   assignments    Assignment[]
   availabilities EmployeeAvailability[]
+  preferences    EmployeePreference[]
   rosterEntries  RosterEntry[]
 
   @@index([podId])
@@ -233,27 +244,43 @@ model RosterEntry {
   @@index([date])
 }
 
+model EmployeePreference {
+  id         String         @id @default(cuid())
+  employeeId String
+  type       PreferenceType @default(PREFERRED_OFF_DAY)
+  dayOfWeek  Int?           // 0-6 (0=Sun..6=Sat)
+  note       String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  employee   Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
 model Conflict {
-  id             String         @id @default(cuid())
+  id             String           @id @default(cuid())
   rosterId       String
   date           DateTime
   brandId        String
   processId      String
   type           ConflictType
+  severity       ConflictSeverity @default(ERROR)
   requiredStaff  Int
   availableStaff Int
   message        String
-  status         ConflictStatus @default(OPEN)
+  status         ConflictStatus   @default(OPEN)
   resolvedAt     DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  roster         Roster         @relation(fields: [rosterId], references: [id], onDelete: Cascade)
-  brand          Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  process        Process        @relation(fields: [processId], references: [id], onDelete: Cascade)
+  roster         Roster           @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+  brand          Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  process        Process          @relation(fields: [processId], references: [id], onDelete: Cascade)
 
   @@index([rosterId])
   @@index([brandId])
   @@index([date])
   @@index([status])
+  @@index([severity])
 }

@@ -160,3 +160,29 @@ export const updateEntrySchema = z.object({
     override: z.boolean().optional(),
   }),
 });
+
+export const createPreferenceSchema = z.object({
+  params: z.object({ id: z.string() }),
+  body: z.object({
+    type: z.enum(['PREFERRED_OFF_DAY']).default('PREFERRED_OFF_DAY'),
+    dayOfWeek: z.number().int().min(0).max(6),
+    note: z.string().nullable().optional(),
+  }),
+});
+
+export const updatePreferenceSchema = z.object({
+  params: z.object({ id: z.string(), prefId: z.string() }),
+  body: z.object({
+    dayOfWeek: z.number().int().min(0).max(6).optional(),
+    note: z.string().nullable().optional(),
+  }),
+});
+
+export const updatePublicHolidaySchema = z.object({
+  params: z.object({ id: z.string() }),
+  body: z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD').optional(),
+    name: z.string().min(1).optional(),
+    region: z.string().optional(),
+  }),
+});

@@ -1,4 +1,4 @@
-# Demo Walkthrough Guide
+# Syncron Smart Roster Management System — Demo Walkthrough Guide
 
 ## Core flow (use this for the video)
 
@@ -9,107 +9,151 @@ This continuous path demonstrates the full loop: baseline generation, dynamic co
 - Click **Generate Roster** (or **Regenerate Roster**).
 - Confirm generation in the modal.
 - Observe:
-  - Total open conflicts: **18** (visible on the **Publish Roster** badge).
-  - Shifts generated: **1,116** entries for 36 active employees.
+  - Total open conflicts: **34** (visible on the **Publish Roster** badge: 23 blocking errors, 11 soft warnings).
+  - Shifts generated: **1,054** entries for 34 active employees across 31 days.
 - Click **Dashboard** in the sidebar:
-  - Coverage rate: **97.6%** (759 filled / 778 required slots).
-  - Open conflicts: **18**.
+  - Coverage rate: **97.9%** (1,143 filled / 1,167 required slots).
+  - Open issues: **34** (23 critical errors, 11 soft warnings).
 
 ### 2. Add Approved Leave for a Clean Single-Resource Brand
 - Click **Team & Pods** in the sidebar (`/team`).
-- In the search bar, type `Neha Joshi`.
-  - Neha Joshi is the sole employee assigned to **ChaiMakers** on the **CS** process (which has 0 baseline conflicts in December 2026).
-- Click the **Availability** button on Neha Joshi's row to open the Availability Drawer.
+- In the search bar, type `Arjun Singh`.
+  - Arjun Singh is the sole employee assigned to **Kashmir Looms** on the **CS** process (operating Monday through Saturday with zero baseline conflicts in December 2026).
+- Click the **Availability** button on Arjun Singh's row to open the Availability Drawer.
 - Click **Add Rule / Leave**.
 - Configure the leave:
   - **Type**: `LEAVE`
   - **Status**: `APPROVED`
-  - **Start Date**: `2026-12-01`
-  - **End Date**: `2026-12-01`
-  - **Reason**: `Family emergency`
+  - **Start Date**: `2026-12-08` (Tuesday, working day, non-holiday)
+  - **End Date**: `2026-12-08`
+  - **Reason**: `Personal family leave`
 - Click **Add Availability**.
 - Observe the toast notification:
   - Title: `"Availability record added"`
   - Message: `"1 conflict opened, 0 resolved"`
+- Observe the **Change Impact Panel** displayed at the top of the drawer:
+  - Summary chip: `1 Gap Created`.
+  - Details: `2026-12-08 • Kashmir Looms | Process: CS | Staff: 1 → 0 / 1 req | Status: GAP`.
+- Close the drawer.
 
 ### 3. Inspect New Coverage Gap in Conflict Center
-- Navigate to **Conflict Center** (`/conflicts?month=12&year=2026`).
+- Navigate to **Conflict Center** in the sidebar (`/conflicts?month=12&year=2026`).
 - Observe:
-  - **Open Issues** tab badge has increased from 18 to **19**.
-  - **Coverage Gaps (0 Staff)** counter increments by 1.
+  - **Open Issues** tab badge has increased from 34 to **35** (+1).
+  - **Critical Errors** counter increments to **24** (Soft Warnings remain 11).
 - In the table, observe the new row:
-  - **Brand & Process**: ChaiMakers • CS
-  - **Date**: Tuesday, Dec 1, 2026
-  - **Conflict Type**: `COVERAGE_GAP`
+  - **Brand & Process**: Kashmir Looms • CS
+  - **Date**: Tuesday, Dec 8, 2026
+  - **Conflict Type**: `COVERAGE_GAP` (Severity: `ERROR`)
   - **Staffing Level**: `0 / 1 staff`
-  - **Diagnosis**: `Coverage gap: 0 of 1 required staff allocated for ChaiMakers CS on 2026-12-01. Neha Joshi is unavailable (LEAVE: Family emergency).`
+  - **Diagnosis**: `Coverage gap: 0 of 1 required staff allocated for Kashmir Looms CS on 2026-12-08. Arjun Singh is unavailable (LEAVE: Personal family leave).`
 
 ### 4. Find and Assign an Eligible Replacement
-- Click on the **ChaiMakers CS** row to open the **Conflict Resolution Drawer**.
-- The drawer calls `GET /api/conflicts/:id/replacements` and displays 2 eligible candidates:
-  1. **Kunal Shah** (`kunal.shah@datastraw.io`) — Primary: SpiceRoute Global | Month Shifts: 0 days | Badged: **Fairest Match** (#1)
-  2. **Siddharth Sen** (`siddharth.sen@datastraw.io`) — Primary: SpiceRoute Global | Month Shifts: 0 days (#2)
-- Click the **Assign** button next to **Kunal Shah**.
+- Click on the **Kashmir Looms CS** row to open the **Conflict Resolution Drawer**.
+- The drawer calls `GET /api/conflicts/:id/replacements` and displays the ranked eligible candidates:
+  1. **Siddharth Sen** (`siddharth.sen@datastraw.io`) — Pod Gamma | Primary: SpiceRoute Global | Month Shifts: 6 days | Badged: **Fairest Match** (#1)
+- Click the **Assign** button next to **Siddharth Sen**.
 - Observe the toast notification:
   - Title: `"Replacement assigned successfully"`
   - Message: `"0 conflicts opened, 1 resolved"`
 
 ### 5. Confirm Return to Baseline
 - In the Conflict Center:
-  - The **Open Issues** badge returns to **18**.
-  - The **Resolved History** tab now shows the resolved ChaiMakers conflict with a resolution timestamp.
+  - The **Open Issues** badge returns to **34** (23 critical errors, 11 soft warnings).
+  - The **Resolved History** tab now shows the resolved Kashmir Looms conflict with a resolution timestamp and assigned replacement employee name.
 - Click **Dashboard** in the sidebar:
-  - Coverage rate returns to **97.6%** (759 / 778 slots).
-  - Open conflicts returns to **18**.
+  - Coverage rate returns to **97.9%** (1,143 / 1,167 slots).
+  - Open issues returns to **34**.
 
 ---
 
-## Secondary Features Walkthrough
+## The 5 Operational Roster Views
 
-### 1. Brand Operational SLA View
-- Navigate to **Monthly Roster** (`/roster?month=12&year=2026`).
-- Click the **Brand Operational View** toggle in the header.
-- The view renders daily requirement rows `(Brand, Process)` against days 1–31:
-  - Cells display `allocated / required` staff counts.
-  - Emerald (`OK`): requirement satisfied.
-  - Orange (`PARTIAL`): partial coverage (e.g. Indus Techworks Retention on Tuesdays with 1/2 staff).
-  - Rose (`GAP`): zero coverage (e.g. Kalyan Organics CS on Sundays with 0/1 staff).
+Syncron provides 5 distinct operational perspectives accessible from the view switcher at the top of `/roster`:
 
-### 2. Manual Shift Editing & 422 Hard Constraint Override
-- Switch back to the **Employee Grid** view.
-- Locate **Rohan Iyer** on **December 15, 2026** (marked `LV` for approved leave).
-- Click the cell to open the **Shift Action Panel**.
-- Attempt to set Status to `WORKING` and click **Save Shift**.
-- The server returns HTTP 422 with code `LEAVE_CONFLICT`:
-  - `Employee Rohan Iyer is on approved LEAVE (Medical consultation (Trap 3: Combined with Sneha Nair Tue weekly-off)). Use { override: true } to force.`
-- Click **Override Anyway**.
-- The server accepts the explicit override with `{ override: true }`:
-  - Toast notification reports: `"Shift updated successfully. 1 conflict opened, 1 resolved"`.
-  - The old `COVERAGE_GAP` conflict for Indus Retention on 2026-12-15 is resolved.
-  - A new `LEAVE_CONFLICT` is opened for Indus Retention on 2026-12-15 recording the leave violation.
+### 1. Company View (`?view=company`)
+- Complete matrix of all 34 employees across days 1–31.
+- Clear status badges: `W` (Working), `WO` (Weekly Off), `LV` (Approved Leave), `CO` (Comp Off), `PH` (Public Holiday Off).
+- Conflict badge indicators on cells with open issues.
+- Quick search by employee name, filter by organizational pod, and pagination.
 
-### 3. Team Governance & Non-Destructive Lead Selection
-- Navigate to **Team & Pods** (`/team`).
-- Review the 5 organizational pods: Alpha, Beta, Gamma, Delta, Epsilon.
-- Click **Designate Lead** on Pod Alpha:
-  - The modal lists only active members belonging to Pod Alpha.
-  - Select the current lead (**Aarav Sharma**) and click **Save Lead**.
-  - Toast notification confirms: `"Pod Lead Updated: Designated lead for Pod Alpha - Core Commerce updated successfully."`
+### 2. Pod View (`?view=pod`)
+- Organizational grouping across all 5 pods:
+  - **Pod Alpha - Core Commerce** (Lead: Aarav Sharma)
+  - **Pod Beta - Growth Brands** (Lead: Swati Deshmukh)
+  - **Pod Gamma - Enterprise & Retention** (Lead: Rohan Iyer)
+  - **Pod Delta - High Volume Support** (Lead: Vikram Malhotra)
+  - **Pod Epsilon - Operations & Logistics** (Lead: Divya Pillai)
+- Displays pod lead badge, total member headcount, total monthly shifts worked, and individual member utilization.
 
-### 4. Operating Rules & Coverage Requirements Editor
-- Navigate to **Brands & Operating Rules** (`/brands`).
-- Review operating rules:
-  - Working day toggle buttons (Sun 0 through Sat 6).
-  - "Open on Holidays" checkbox.
-  - "Min Staff" number input.
-- Click the **Assignment Matrix** tab to view employee certifications per brand/process.
-- Click the **Public Holidays** tab to view scheduled holidays for November–December 2026.
+### 3. Brand View (`?view=brand`)
+- Operational SLA view displaying all 25 brands (20 single-resource, 5 multi-employee) and their assigned processes against days 1–31.
+- Each cell displays `allocated / required` staff counts:
+  - **Emerald (`OK`)**: Daily requirement fully satisfied.
+  - **Amber (`PARTIAL`)**: Partial coverage (e.g. Indus Techworks Retention on Tuesdays with 1/2 staff).
+  - **Rose (`GAP`)**: Zero coverage (e.g. Kalyan Organics CS on Sundays with 0/1 staff).
 
-### 5. Safe Roster Publishing
-- Navigate to **Monthly Roster** (`/roster?month=12&year=2026`).
-- Click **Publish Roster**.
-- The modal halts publication because 18 open conflicts exist:
-  - `"Cannot publish roster with 18 open conflict(s). Review conflicts in the Conflict Center or force publish."`
-- Click **Force Publish Anyway**:
-  - Roster status transitions to **`PUBLISHED`**.
-  - Generation and shift edit actions are locked to prevent unintended modifications.
+### 4. Process View (`?view=process`)
+- Process-centric breakdown across all 6 core processes:
+  - `CS` (Customer Support)
+  - `ACC` (Account Management)
+  - `NDR` (Non-Delivery Reports)
+  - `Retention` (Customer Retention)
+  - `Escalations` (High Priority Escalations)
+  - `Catalog` (Catalog & Listing Operations)
+- Displays total required daily headcount vs total allocated staff, with expandable brand-level drill-down.
+
+### 5. Employee View (`?view=employee`)
+- Individual monthly calendar timeline for any selected employee.
+- Shows daily shift cards with brand and process badges, hours, and warning notes.
+- Quick employee switcher dropdown in the toolbar.
+
+---
+
+## Soft Constraints (Employee Shift Preferences)
+
+Syncron distinguishes between **hard constraints** (weekly off, approved leave, single-resource multi-process exclusivity) and **soft constraints** (employee preferred off days):
+
+- **Engine Behavior**:
+  - Evaluated during roster generation and validation.
+  - When an employee is scheduled on their preferred off day, the engine generates a soft warning: `PREFERENCE_VIOLATION` with severity `WARNING`.
+  - **Publish Invariant**: Soft warnings **never block publishing**. The Publish modal only halts on open `ERROR` conflicts.
+- **UI Indication**:
+  - Conflict Center displays separate KPI cards for **Critical Errors** (blocking) vs **Soft Warnings** (non-blocking).
+  - Severity dropdown filter allows toggling between `All Severities`, `Errors (Blocking)`, and `Warnings (Soft)`.
+  - Preference warnings are badged in amber with a heart icon and tooltip explaining that business needs override soft preferences.
+- **Managing Preferences**:
+  - Open `/team` -> Click **Availability** on any employee row.
+  - Scroll to **Shift Preferences (Soft Constraints)** to view active preferred off days.
+  - Add or remove preferred off days; draft rosters automatically re-sync without full regeneration.
+
+---
+
+## Real-Time Change Impact Analysis Panel
+
+Whenever an operator creates or modifies an availability rule or coverage requirement:
+- The backend evaluates the exact delta on active draft rosters:
+  - Compares `allocatedBefore` vs `allocatedAfter` for every affected date, brand, and process.
+  - Flags each slot as `STILL_COVERED`, `PARTIAL`, or `GAP`.
+- The frontend renders an inline **Change Impact Panel**:
+  - Total affected slots count.
+  - Summary chips for created gaps, partial coverage, and preserved coverage.
+  - Scrollable slot breakdown with remaining employee names and staffing count transitions.
+
+---
+
+## Configurability Controls
+
+Syncron exposes full runtime control over business rules without touching code:
+
+1. **Brand Operating Rules** (`/brands`):
+   - Working days toggle (Sundays through Saturdays).
+   - "Open on Public Holidays" toggle.
+2. **Coverage Requirements & Overrides** (`/brands` -> Operating Rules):
+   - Default minimum staffing per process.
+   - Date-specific overrides (e.g. holiday staffing surges).
+   - Weekday-specific overrides.
+3. **Public Holiday Calendar** (`/brands` -> Public Holidays):
+   - Add, edit, or delete statutory public holidays with active date picker.
+4. **Pod Governance** (`/team`):
+   - Designate and reassign pod leads with non-destructive validation.

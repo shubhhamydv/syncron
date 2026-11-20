@@ -11,6 +11,8 @@ router.get('/:id', RosterController.getRosterById);
 router.get('/:id/entries', RosterController.getEntries);
 router.get('/:id/employee-view', RosterController.getEmployeeView);
 router.get('/:id/brand-view', RosterController.getBrandView);
+router.get('/:id/process-view', RosterController.getProcessView);
+router.get('/:id/pod-view', RosterController.getPodView);
 router.get('/:id/conflicts', RosterController.getConflicts);
 router.post('/:id/publish', validate(publishRosterSchema), RosterController.publish);
 
