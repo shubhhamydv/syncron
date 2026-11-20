@@ -247,6 +247,18 @@ export function generateRoster(input: EngineInput): EngineOutput {
     return a.processId.localeCompare(b.processId);
   });
 
+  // Invariant Assertion: At most one conflict per (date, brand, process) requirement
+  const conflictKeys = new Set<string>();
+  for (const c of conflicts) {
+    const key = `${c.date}_${c.brandId}_${c.processId}`;
+    if (conflictKeys.has(key)) {
+      throw new Error(
+        `Generator Invariant Violation: At most one conflict allowed per (date, brand, process). Found duplicate on ${key} (${c.type}).`
+      );
+    }
+    conflictKeys.add(key);
+  }
+
   // Build Engine Stats
   const conflictsByType: Record<string, number> = {
     COVERAGE_GAP: 0,

@@ -29,6 +29,7 @@ export function resolveDailyRequirements(dateStr: string, input: EngineInput): D
   const processMap = new Map(input.processes.map((p) => [p.id, p]));
 
   const requirements: DailyRequirement[] = [];
+  const resolvedBrandProcesses = new Set<string>();
 
   for (const rule of input.operatingRules) {
     const brand = activeBrandMap.get(rule.brandId);
@@ -36,6 +37,11 @@ export function resolveDailyRequirements(dateStr: string, input: EngineInput): D
 
     const proc = processMap.get(rule.processId);
     if (!proc) continue;
+
+    const bpKey = `${rule.brandId}:${rule.processId}`;
+    if (resolvedBrandProcesses.has(bpKey)) {
+      continue; // Guarantee exactly one requirement resolution per brand+process per day
+    }
 
     // 1. Brand Calendar Check: Working day of week
     if (!rule.workingDays.includes(weekday)) {
@@ -75,6 +81,7 @@ export function resolveDailyRequirements(dateStr: string, input: EngineInput): D
     }
 
     if (minimumStaff > 0) {
+      resolvedBrandProcesses.add(bpKey);
       requirements.push({
         brandId: brand.id,
         processId: proc.id,

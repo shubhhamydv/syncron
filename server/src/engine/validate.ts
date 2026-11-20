@@ -169,6 +169,16 @@ export function validateRoster(input: EngineInput, entries: RosterEntryDraft[]):
             ? `${prefix} ${unavailableReasons.join('; ')}.`
             : prefix;
 
+        // Check if an availability/overlap conflict was already recorded for this brand+process on this date
+        const existingIdx = conflicts.findIndex(
+          (c) => c.date === dateStr && c.brandId === req.brandId && c.processId === req.processId
+        );
+        if (existingIdx !== -1) {
+          // If a requirement conflict also occurred, augment message or preserve single conflict invariant
+          conflicts[existingIdx].message += ` ${message}`;
+          continue;
+        }
+
         conflicts.push({
           date: dateStr,
           brandId: req.brandId,
@@ -180,6 +190,18 @@ export function validateRoster(input: EngineInput, entries: RosterEntryDraft[]):
         });
       }
     }
+  }
+
+  // Invariant Assertion: At most one conflict per (date, brand, process) requirement
+  const conflictKeys = new Set<string>();
+  for (const c of conflicts) {
+    const key = `${c.date}_${c.brandId}_${c.processId}`;
+    if (conflictKeys.has(key)) {
+      throw new Error(
+        `Validator Invariant Violation: At most one conflict allowed per (date, brand, process). Found duplicate on ${key} (${c.type}).`
+      );
+    }
+    conflictKeys.add(key);
   }
 
   // Sort conflicts deterministically

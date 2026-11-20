@@ -1,3 +1,7 @@
+process.env.DATABASE_URL =
+  process.env.TEST_DATABASE_URL ||
+  'postgresql://postgres:postgres@localhost:5432/roster_db?schema=test_schema';
+
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import app from '../src/app';

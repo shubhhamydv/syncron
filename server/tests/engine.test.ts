@@ -455,4 +455,117 @@ describe('Scheduling Engine & Validator Tests', () => {
     expect(candidateIds).not.toContain('e3'); // on leave
     expect(candidateIds).not.toContain('e1'); // on leave
   });
+
+  // ---------------------------------------------------------------------------
+  // STEP 0 REGRESSION TESTS: CONFLICT UNIQUENESS & TUESDAY STAFFING INVARIANTS
+  // ---------------------------------------------------------------------------
+  it('14. (a) Prevents duplicate conflicts when redundant operating rules exist for the same brand+process', () => {
+    const fixture = createBaseFixture();
+    fixture.operatingRules = [
+      { brandId: 'b1', processId: 'p1', workingDays: [1, 2, 3, 4, 5], operatesOnPublicHolidays: false },
+      // Duplicate rule that previously could cause double resolution
+      { brandId: 'b1', processId: 'p1', workingDays: [1, 2, 3, 4, 5], operatesOnPublicHolidays: false },
+    ];
+    fixture.coverageRequirements = [
+      { brandId: 'b1', processId: 'p1', minimumStaff: 2 },
+    ];
+    fixture.employees = [
+      { id: 'e1', name: 'Worker 1', email: 'w1@test.com', status: 'ACTIVE' },
+    ];
+    fixture.assignments = [
+      { employeeId: 'e1', brandId: 'b1', processId: 'p1' },
+    ];
+
+    const output = generateRoster(fixture);
+    // Filter conflicts for 2026-12-01 (Tuesday)
+    const dec1Conflicts = output.conflicts.filter(
+      (c) => c.date === '2026-12-01' && c.brandId === 'b1' && c.processId === 'p1'
+    );
+
+    expect(dec1Conflicts.length).toBe(1);
+    expect(dec1Conflicts[0].type).toBe('INSUFFICIENT_STAFF');
+  });
+
+  it('15. (b) Validator Invariant: Ensures at most one conflict exists per (date, brand, process)', () => {
+    const fixture = createBaseFixture();
+    fixture.operatingRules = [
+      { brandId: 'b1', processId: 'p1', workingDays: [1, 2, 3, 4, 5], operatesOnPublicHolidays: false },
+    ];
+    fixture.coverageRequirements = [
+      { brandId: 'b1', processId: 'p1', minimumStaff: 2 },
+    ];
+    fixture.employees = [
+      { id: 'e1', name: 'Worker 1', email: 'w1@test.com', status: 'ACTIVE' },
+    ];
+    fixture.assignments = [
+      { employeeId: 'e1', brandId: 'b1', processId: 'p1' },
+    ];
+    fixture.availabilities = [
+      // Worker 1 is on approved leave on 2026-12-01
+      { employeeId: 'e1', type: 'LEAVE', startDate: '2026-12-01', endDate: '2026-12-01', status: 'APPROVED' },
+    ];
+
+    // Suppose an entry illegally marked e1 as WORKING on 2026-12-01
+    const entries: RosterEntryDraft[] = [
+      { employeeId: 'e1', brandId: 'b1', processId: 'p1', date: '2026-12-01', status: 'WORKING' },
+    ];
+
+    const validationConflicts = validateRoster(fixture, entries);
+    const dec1Conflicts = validationConflicts.filter(
+      (c) => c.date === '2026-12-01' && c.brandId === 'b1' && c.processId === 'p1'
+    );
+
+    // Must be exactly one conflict (no duplicate LEAVE_CONFLICT + INSUFFICIENT_STAFF on same date+brand+process)
+    expect(dec1Conflicts.length).toBe(1);
+  });
+
+  it('16. (c) Asserts every Tuesday in a month with a weekly-off employee on a min-2 brand yields INSUFFICIENT_STAFF', () => {
+    const fixture = createBaseFixture();
+    fixture.brands.push({ id: 'b_indus', name: 'Indus Techworks', status: 'ACTIVE' });
+    fixture.processes.push({ id: 'p_ret', name: 'Retention' });
+
+    fixture.operatingRules = [
+      { brandId: 'b_indus', processId: 'p_ret', workingDays: [1, 2, 3, 4, 5, 6], operatesOnPublicHolidays: false },
+    ];
+    fixture.coverageRequirements = [
+      { brandId: 'b_indus', processId: 'p_ret', minimumStaff: 2 },
+    ];
+    fixture.employees = [
+      { id: 'emp_rohan', name: 'Rohan Iyer', email: 'rohan@test.com', status: 'ACTIVE' },
+      { id: 'emp_sneha', name: 'Sneha Nair', email: 'sneha@test.com', status: 'ACTIVE' },
+    ];
+    fixture.assignments = [
+      { employeeId: 'emp_rohan', brandId: 'b_indus', processId: 'p_ret' },
+      { employeeId: 'emp_sneha', brandId: 'b_indus', processId: 'p_ret' },
+    ];
+    fixture.availabilities = [
+      // Sneha has recurring Tuesday weekly-off (dayOfWeek: 2)
+      { employeeId: 'emp_sneha', type: 'WEEKLY_OFF', dayOfWeek: 2, status: 'APPROVED' },
+      // Rohan on leave only on Dec 15
+      { employeeId: 'emp_rohan', type: 'LEAVE', startDate: '2026-12-15', endDate: '2026-12-15', status: 'APPROVED' },
+    ];
+
+    const output = generateRoster(fixture);
+
+    // In December 2026, Tuesdays are: Dec 1, Dec 8, Dec 15, Dec 22, Dec 29
+    const tuesdays = ['2026-12-01', '2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'];
+
+    for (const tue of tuesdays) {
+      const tueConflicts = output.conflicts.filter(
+        (c) => c.date === tue && c.brandId === 'b_indus' && c.processId === 'p_ret'
+      );
+
+      expect(tueConflicts.length).toBe(1);
+
+      if (tue === '2026-12-15') {
+        // Both unavailable -> COVERAGE_GAP (0/2)
+        expect(tueConflicts[0].type).toBe('COVERAGE_GAP');
+        expect(tueConflicts[0].availableStaff).toBe(0);
+      } else {
+        // Sneha off, Rohan works -> INSUFFICIENT_STAFF (1/2)
+        expect(tueConflicts[0].type).toBe('INSUFFICIENT_STAFF');
+        expect(tueConflicts[0].availableStaff).toBe(1);
+      }
+    }
+  });
 });
