@@ -1,0 +1,48 @@
+services:
+  # 1. Express Backend Web Service
+  - type: web
+    name: syncron-server
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci && npm run build
+    startCommand: npm run migrate:deploy && npm run seed && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: syncron-db
+          property: connectionString
+      - key: CLIENT_URL
+        value: "*"
+      - key: ADMIN_TOKEN
+        generateValue: true
+
+  # 2. Vite + React Frontend Static Site
+  - type: web
+    name: syncron-client
+    runtime: static
+    plan: free
+    rootDir: client
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: syncron-server
+          property: host
+          value: https://${syncron-server.host}/api
+
+databases:
+  # 3. Managed PostgreSQL Database
+  - name: syncron-db
+    databaseName: roster_db
+    user: postgres
+    plan: free
