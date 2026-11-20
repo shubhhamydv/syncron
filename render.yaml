@@ -43,5 +43,4 @@ databases:
   # 3. Managed PostgreSQL Database
   - name: syncron-db
     databaseName: roster_db
-    user: postgres
     plan: free
