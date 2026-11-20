@@ -1,6 +1,9 @@
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ||
-  'postgresql://postgres:postgres@localhost:5432/roster_db?schema=test_schema';
+  'postgresql://postgres:postgres@localhost:5432/roster_db_test';
+
+import { assertTestDatabase } from '../src/lib/testDbSafety';
+assertTestDatabase(process.env.DATABASE_URL);
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
@@ -572,6 +575,35 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
       expect(res.body).toHaveProperty('coveragePercent');
       expect(res.body.coveragePercent).toBeGreaterThan(90);
       expect(res.body).toHaveProperty('openConflictsByType');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // ADMIN DEMO RESET
+  // ---------------------------------------------------------------------------
+  describe('POST /api/admin/reset-demo', () => {
+    it('rejects reset without valid x-admin-token (403)', async () => {
+      const res = await request(app).post('/api/admin/reset-demo');
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects reset with wrong x-admin-token (403)', async () => {
+      const res = await request(app)
+        .post('/api/admin/reset-demo')
+        .set('x-admin-token', 'wrong-token');
+      expect(res.status).toBe(403);
+    });
+
+    it('resets demo database and regenerates baseline December 2026 roster (200)', async () => {
+      process.env.ADMIN_TOKEN = 'test-admin-token-123';
+      const res = await request(app)
+        .post('/api/admin/reset-demo')
+        .set('x-admin-token', 'test-admin-token-123');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('conflictsCount', 18);
+      expect(res.body).toHaveProperty('totalEntries', 1116);
     });
   });
 });

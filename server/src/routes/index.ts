@@ -12,6 +12,7 @@ import rosterRoutes from './rosterRoutes';
 import conflictRoutes from './conflictRoutes';
 import rosterEntryRoutes from './rosterEntryRoutes';
 import dashboardRoutes from './dashboardRoutes';
+import adminRoutes from './adminRoutes';
 
 const router = Router();
 
@@ -40,5 +41,6 @@ router.use('/rosters', rosterRoutes);
 router.use('/conflicts', conflictRoutes);
 router.use('/roster-entries', rosterEntryRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/admin', adminRoutes);
 
 export default router;

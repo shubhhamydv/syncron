@@ -8,10 +8,18 @@ dotenv.config();
 
 const app = express();
 
-const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+const rawClientUrls = process.env.CLIENT_URL || 'http://localhost:3000';
+const allowedOrigins = rawClientUrls.split(',').map((u) => u.trim());
+
 app.use(
   cors({
-    origin: clientUrl === '*' ? true : clientUrl,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} not allowed by CORS`));
+      }
+    },
     credentials: true,
   })
 );
