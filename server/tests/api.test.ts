@@ -17,6 +17,9 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
   beforeAll(async () => {
     // Ensure database is connected
     await prisma.$connect();
+    await prisma.employeeAvailability.deleteMany({
+      where: { reason: { in: ['Family emergency', 'Emergency medical appointment'] } },
+    });
   });
 
   afterAll(async () => {
@@ -477,6 +480,54 @@ describe('Smart Roster Management REST API - Phase 3 Integration Tests', () => {
         },
       });
       expect(openAfterRevert.length).toBe(0);
+    });
+
+    it('rejects scheduling an employee on approved leave with 422 LEAVE_CONFLICT, and opens LEAVE_CONFLICT on override', async () => {
+      const rohan = await prisma.employee.findFirst({ where: { name: 'Rohan Iyer' } });
+      const indus = await prisma.brand.findUnique({ where: { name: 'Indus Techworks' } });
+      const retProc = await prisma.process.findUnique({ where: { name: 'Retention' } });
+      const dateStr = '2026-12-15';
+      const entry = await prisma.rosterEntry.findFirst({
+        where: {
+          rosterId,
+          employeeId: rohan!.id,
+          date: new Date(`${dateStr}T00:00:00.000Z`),
+        },
+      });
+      expect(entry).toBeDefined();
+
+      // 1. Attempt to update to WORKING without override -> 422
+      const rejectRes = await request(app)
+        .patch(`/api/roster-entries/${entry!.id}`)
+        .send({ status: 'WORKING', brandId: indus!.id, processId: retProc!.id });
+      expect(rejectRes.status).toBe(422);
+      expect(rejectRes.body.error.code).toBe('LEAVE_CONFLICT');
+
+      // 2. Perform update with override: true -> 200, opens LEAVE_CONFLICT
+      const overrideRes = await request(app)
+        .patch(`/api/roster-entries/${entry!.id}`)
+        .send({ status: 'WORKING', brandId: indus!.id, processId: retProc!.id, override: true });
+      expect(overrideRes.status).toBe(200);
+      expect(overrideRes.body.opened).toBe(1);
+      expect(overrideRes.body.resolved).toBe(1);
+
+      // Verify that LEAVE_CONFLICT is now OPEN for Indus Techworks Retention
+      const leaveConflict = await prisma.conflict.findFirst({
+        where: {
+          rosterId,
+          date: new Date(`${dateStr}T00:00:00.000Z`),
+          brandId: indus!.id,
+          processId: retProc!.id,
+          type: 'LEAVE_CONFLICT',
+          status: 'OPEN',
+        },
+      });
+      expect(leaveConflict).toBeDefined();
+
+      // Revert Rohan back to LEAVE
+      await request(app)
+        .patch(`/api/roster-entries/${entry!.id}`)
+        .send({ status: 'LEAVE', brandId: null, processId: null, override: true });
     });
   });
 

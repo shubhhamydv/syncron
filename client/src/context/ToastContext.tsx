@@ -44,10 +44,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       let resolved = 0;
 
       if (result) {
-        if (Array.isArray(result.openedConflicts)) opened = result.openedConflicts.length;
-        if (Array.isArray(result.resolvedConflicts)) resolved = result.resolvedConflicts.length;
+        if (typeof result.opened === 'number') opened += result.opened;
+        if (typeof result.resolved === 'number') resolved += result.resolved;
+        if (Array.isArray(result.openedConflicts)) opened += result.openedConflicts.length;
+        if (Array.isArray(result.resolvedConflicts)) resolved += result.resolvedConflicts.length;
         if (result.syncResults && Array.isArray(result.syncResults)) {
           for (const s of result.syncResults) {
+            if (typeof s.opened === 'number') opened += s.opened;
+            if (typeof s.resolved === 'number') resolved += s.resolved;
             if (Array.isArray(s.openedConflicts)) opened += s.openedConflicts.length;
             if (Array.isArray(s.resolvedConflicts)) resolved += s.resolvedConflicts.length;
           }

@@ -12,6 +12,8 @@ dist/
 build/
 *.tsbuildinfo
 push-30-commits.ps1
+test-results/
+playwright-report/
 
 # Logs & scratch
 npm-debug.log*

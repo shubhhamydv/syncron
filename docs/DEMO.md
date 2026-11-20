@@ -1,191 +1,115 @@
-# Syncron - Smart Roster Management System
-## Stage Demo & Live Walkthrough Guide
+# Demo Walkthrough Guide
 
-This document contains the step-by-step click-path for conducting a live demonstration of the **Syncron Smart Roster Management System**, built for the DataStraw AI Tech Internship assessment.
+## Core flow (use this for the video)
 
----
+This continuous path demonstrates the full loop: baseline generation, dynamic conflict generation on leave creation, algorithmic replacement search, and conflict resolution back to baseline.
 
-### Tech Stack & Architecture
-- **Backend**: Node.js + Express + TypeScript, PostgreSQL, Prisma ORM, pure UTC scheduling engine in `/server/src/engine/`.
-- **Frontend**: Vite + React + TypeScript, Tailwind CSS, TanStack Query, Recharts, Lucide Icons, pure date-fns.
-- **Data Invariant**: Zero fake buttons, zero hardcoded numbers. Every statistic, shift, and conflict is computed live from the backend API.
+### 1. Generate December 2026 Roster
+- Navigate to `http://localhost:3000/roster?month=12&year=2026`.
+- Click **Generate Roster** (or **Regenerate Roster**).
+- Confirm generation in the modal.
+- Observe:
+  - Total open conflicts: **18** (visible on the **Publish Roster** badge).
+  - Shifts generated: **1,116** entries for 36 active employees.
+- Click **Dashboard** in the sidebar:
+  - Coverage rate: **97.6%** (759 filled / 778 required slots).
+  - Open conflicts: **18**.
 
----
+### 2. Add Approved Leave for a Clean Single-Resource Brand
+- Click **Team & Pods** in the sidebar (`/team`).
+- In the search bar, type `Neha Joshi`.
+  - Neha Joshi is the sole employee assigned to **ChaiMakers** on the **CS** process (which has 0 baseline conflicts in December 2026).
+- Click the **Availability** button on Neha Joshi's row to open the Availability Drawer.
+- Click **Add Rule / Leave**.
+- Configure the leave:
+  - **Type**: `LEAVE`
+  - **Status**: `APPROVED`
+  - **Start Date**: `2026-12-01`
+  - **End Date**: `2026-12-01`
+  - **Reason**: `Family emergency`
+- Click **Add Availability**.
+- Observe the toast notification:
+  - Title: `"Availability record added"`
+  - Message: `"1 conflict opened, 0 resolved"`
 
-### Prerequisites & Launching
+### 3. Inspect New Coverage Gap in Conflict Center
+- Navigate to **Conflict Center** (`/conflicts?month=12&year=2026`).
+- Observe:
+  - **Open Issues** tab badge has increased from 18 to **19**.
+  - **Coverage Gaps (0 Staff)** counter increments by 1.
+- In the table, observe the new row:
+  - **Brand & Process**: ChaiMakers • CS
+  - **Date**: Tuesday, Dec 1, 2026
+  - **Conflict Type**: `COVERAGE_GAP`
+  - **Staffing Level**: `0 / 1 staff`
+  - **Diagnosis**: `Coverage gap: 0 of 1 required staff allocated for ChaiMakers CS on 2026-12-01. Neha Joshi is unavailable (LEAVE: Family emergency).`
 
-#### 1. Database (PostgreSQL)
-Ensure the PostgreSQL container is running on `localhost:5432`:
-```powershell
-docker start conflux-postgres
-```
+### 4. Find and Assign an Eligible Replacement
+- Click on the **ChaiMakers CS** row to open the **Conflict Resolution Drawer**.
+- The drawer calls `GET /api/conflicts/:id/replacements` and displays 2 eligible candidates:
+  1. **Kunal Shah** (`kunal.shah@datastraw.io`) — Primary: SpiceRoute Global | Month Shifts: 0 days | Badged: **Fairest Match** (#1)
+  2. **Siddharth Sen** (`siddharth.sen@datastraw.io`) — Primary: SpiceRoute Global | Month Shifts: 0 days (#2)
+- Click the **Assign** button next to **Kunal Shah**.
+- Observe the toast notification:
+  - Title: `"Replacement assigned successfully"`
+  - Message: `"0 conflicts opened, 1 resolved"`
 
-#### 2. Start the Backend API (Port 4000)
-```powershell
-cd server
-npm run dev
-```
-Backend will start on `http://localhost:4000` with the API served at `http://localhost:4000/api`.
-
-#### 3. Start the Frontend Application (Port 3000)
-```powershell
-cd client
-npm run dev
-```
-Open `http://localhost:3000` in your web browser. It will automatically redirect to `/roster?month=12&year=2026`.
-
----
-
-### Step-by-Step Stage Demo Click-Path
-
-#### Phase 1: Monthly Roster Grid & Operational View (`/roster`)
-
-1. **System Health & Date Context**:
-   - Point out the top header: Month selector is on **December 2026**.
-   - Note the **API Status: Online (Pure UTC)** indicator showing live backend connectivity.
-   - If no roster has been generated yet, a clean empty state card prompts to generate December 2026.
-
-2. **Generate Baseline Roster**:
-   - Click the **"Generate Roster"** button in the controls header.
-   - A confirmation dialog explains that the engine will evaluate all operating rules, working days, and approved leaves.
-   - Click **"Generate Roster"**.
-   - Within 1 second, a success toast notification appears: `"Generated schedule for 12/2026 with 18 conflict(s)"`.
-   - The interactive 36-employee grid populates with 1,116 shifts (31 days).
-
-3. **Explore the Employee Grid**:
-   - Notice the **sticky header** with days 1–31 and weekday initials (weekends shaded).
-   - Notice the **sticky employee column** with employee name, pod badge, and total working shift count (e.g. `22d`).
-   - Hover over cells to see semantic badges:
-     - `W` (Emerald) = Working shift with brand initials (e.g. `KO`, `ZS`, `BB`).
-     - `OFF` (Slate) = Weekly off.
-     - `LV` (Rose) = Approved leave.
-     - `CO` (Amber) = Comp off.
-     - `HD` (Sky) = Public holiday off.
-     - `-` = Not scheduled.
-
-4. **Filter Operations**:
-   - Filter by **Pod**: Select `Pod Alpha - Core Commerce`. Observe the grid instantly filter to only Pod Alpha members.
-   - Search for **"Vikram"**: Type `Vikram` in the search box to see Vikram Malhotra's multi-brand allocation across Veda Naturals and Desi Threads.
-   - Click **"Reset Filters"**.
-
-5. **Brand Operational SLA View**:
-   - In the view switcher toggle, click **"Brand Operational View"**.
-   - The view dynamically renders every `(Brand, Process)` pair against days 1–31 from `/api/rosters/:id/brand-view`.
-   - Each cell shows `allocated / required` staffing with SLA health colors:
-     - **Emerald (`OK`)**: Fully staffed to requirement.
-     - **Orange (`PARTIAL`)**: Partial coverage (e.g., Indus Techworks Retention on Tuesdays with 1/2 staff).
-     - **Rose (`GAP`)**: Zero staff (e.g., Kalyan Organics CS on Sundays, Zingy Spices Dec 7–9).
-
-6. **Shift Detail Drawer & 422 Constraint Override**:
-   - Switch back to **"Employee Grid"**.
-   - Click on **Rohan Iyer**'s shift on **December 15, 2026** (marked `LV` for family wedding leave).
-   - The **Shift Action Panel** drawer slides in from the right.
-   - Point out the related conflict notice attached to this date.
-   - In the dropdown, change Shift Status to `WORKING` and click **"Save Shift"**.
-   - The backend engine rejects the mutation with a **422 Unprocessable Entity**.
-   - The drawer displays an amber alert:
-     > **Engine Constraint Violation [LEAVE_CONFLICT]**  
-     > *Employee Rohan Iyer is on approved LEAVE (Family wedding). Use { override: true } to force.*
-   - Point out the **"Override Anyway"** button.
-   - Click **"Override Anyway"**. The backend accepts the explicit override, recalculates dependencies, and a toast reports: `"Shift updated successfully. 0 conflicts opened, 1 resolved"`.
+### 5. Confirm Return to Baseline
+- In the Conflict Center:
+  - The **Open Issues** badge returns to **18**.
+  - The **Resolved History** tab now shows the resolved ChaiMakers conflict with a resolution timestamp.
+- Click **Dashboard** in the sidebar:
+  - Coverage rate returns to **97.6%** (759 / 778 slots).
+  - Open conflicts returns to **18**.
 
 ---
 
-#### Phase 2: Conflict Center & Algorithmic Replacements (`/conflicts`)
+## Secondary Features Walkthrough
 
-1. **Conflict Diagnostic Radar**:
-   - Click **"Conflict Center"** in the sidebar navigation.
-   - Point out the 4 KPI metric cards at the top:
-     - **Total Open Issues** (18 baseline deliberate traps)
-     - **Coverage Gaps (0 Staff)** (e.g., 4 Sunday gaps for Kalyan Organics, 3 leave gaps for Zingy Spices)
-     - **Staff Shortages** (e.g., Indus Techworks Retention on Tuesdays)
-     - **Multi-Brand Overlaps** (Vikram Malhotra Friday dual operating days)
-   - Note the **Open Issues** vs **Resolved History** tabs with real-time count badges.
+### 1. Brand Operational SLA View
+- Navigate to **Monthly Roster** (`/roster?month=12&year=2026`).
+- Click the **Brand Operational View** toggle in the header.
+- The view renders daily requirement rows `(Brand, Process)` against days 1–31:
+  - Cells display `allocated / required` staff counts.
+  - Emerald (`OK`): requirement satisfied.
+  - Orange (`PARTIAL`): partial coverage (e.g. Indus Techworks Retention on Tuesdays with 1/2 staff).
+  - Rose (`GAP`): zero coverage (e.g. Kalyan Organics CS on Sundays with 0/1 staff).
 
-2. **Resolving a Sunday Coverage Gap (Trap T7)**:
-   - Filter by Type: `COVERAGE_GAP`.
-   - Click on the row for **Kalyan Organics • CS on Sunday, Dec 6, 2026** (`0 / 1 staff`).
-   - The **Conflict Resolution Drawer** slides in from the right:
-     - Displays full conflict diagnosis: *Sole assigned employee Aarav Sharma is on weekly off.*
-     - Calls `/api/conflicts/:id/replacements` in real-time.
-   - Point out the **Eligible Cross-Brand Replacements** section:
-     - Qualified staff certified for CS across other brands are listed.
-     - Ranked by **fairest workload distribution** (fewest working days in December so far).
-     - Candidate #1 is badged as **"Fairest Match"**.
-   - Click the **"Assign"** button next to Candidate #1 (e.g., *Gaurav Chopra* or *Yash Singhania*).
-   - A success mutation toast appears: `"Replacement assigned successfully. 0 conflicts opened, 1 resolved"`.
-   - The conflict disappears from the "Open Issues" tab and moves into the **"Resolved History"** tab with resolution timestamp.
+### 2. Manual Shift Editing & 422 Hard Constraint Override
+- Switch back to the **Employee Grid** view.
+- Locate **Rohan Iyer** on **December 15, 2026** (marked `LV` for approved leave).
+- Click the cell to open the **Shift Action Panel**.
+- Attempt to set Status to `WORKING` and click **Save Shift**.
+- The server returns HTTP 422 with code `LEAVE_CONFLICT`:
+  - `Employee Rohan Iyer is on approved LEAVE (Medical consultation (Trap 3: Combined with Sneha Nair Tue weekly-off)). Use { override: true } to force.`
+- Click **Override Anyway**.
+- The server accepts the explicit override with `{ override: true }`:
+  - Toast notification reports: `"Shift updated successfully. 1 conflict opened, 1 resolved"`.
+  - The old `COVERAGE_GAP` conflict for Indus Retention on 2026-12-15 is resolved.
+  - A new `LEAVE_CONFLICT` is opened for Indus Retention on 2026-12-15 recording the leave violation.
 
----
+### 3. Team Governance & Non-Destructive Lead Selection
+- Navigate to **Team & Pods** (`/team`).
+- Review the 5 organizational pods: Alpha, Beta, Gamma, Delta, Epsilon.
+- Click **Designate Lead** on Pod Alpha:
+  - The modal lists only active members belonging to Pod Alpha.
+  - Select the current lead (**Aarav Sharma**) and click **Save Lead**.
+  - Toast notification confirms: `"Pod Lead Updated: Designated lead for Pod Alpha - Core Commerce updated successfully."`
 
-#### Phase 3: Executive KPI Dashboard (`/dashboard`)
+### 4. Operating Rules & Coverage Requirements Editor
+- Navigate to **Brands & Operating Rules** (`/brands`).
+- Review operating rules:
+  - Working day toggle buttons (Sun 0 through Sat 6).
+  - "Open on Holidays" checkbox.
+  - "Min Staff" number input.
+- Click the **Assignment Matrix** tab to view employee certifications per brand/process.
+- Click the **Public Holidays** tab to view scheduled holidays for November–December 2026.
 
-1. **Executive Metrics Overview**:
-   - Click **"Dashboard"** in the sidebar.
-   - Review live metrics:
-     - **Coverage Rate %**: Shows live percentage of filled slots vs required slots (with color-coded progress bar).
-     - **Open Conflicts**: Total unresolved issues.
-     - **Active Staff**: 36 active team members.
-     - **Client Brands**: 15 monitored brands.
-
-2. **Analytics & Diagnostics**:
-   - **Open Conflicts by Category**: Recharts horizontal bar chart breaking down issues into Coverage Gaps, Insufficient Staff, Overlaps, and Leave Conflicts.
-   - **Brand Coverage Health Ranking**: Table sorted with lowest coverage SLAs at the top to direct management attention to vulnerable client accounts.
-   - **Conflicts Needing Attention**: Quick-action card listing priority gaps with a 1-click **"Resolve"** link routing directly into the Conflict Center.
-
----
-
-#### Phase 4: Team Governance & Pods (`/team`)
-
-1. **Organizational Pods & Designated Leads**:
-   - Click **"Team & Pods"** in the sidebar.
-   - View all 5 pods: Alpha, Beta, Gamma, Delta, Epsilon.
-   - Click **"Designate Lead"** on Pod Alpha.
-   - In the modal, point out that only active members of Pod Alpha appear as selectable options (enforcing the strict relational rule). Select a member and save.
-
-2. **Employee Availability & Dynamic Conflict Resync**:
-   - In the employee directory table, search for **"Aarav Sharma"**.
-   - Click the **"Availability"** button.
-   - The Availability Drawer opens showing Aarav's weekly off (Sunday).
-   - Click **"Add Rule / Leave"**:
-     - Type: `LEAVE`
-     - Status: `APPROVED`
-     - Dates: `2026-12-10` to `2026-12-12`
-     - Reason: `Annual medical checkup`
-   - Click **"Add Availability"**.
-   - Watch the mutation toast fire: the backend engine instantly detects that Aarav is the sole resource for Kalyan Organics and dynamically opens new `COVERAGE_GAP` conflicts on the December draft roster!
-
----
-
-#### Phase 5: Brand Governance & Rules Editor (`/brands`)
-
-1. **Operating Rules & SLA Editor**:
-   - Click **"Brands & Operating Rules"** in the sidebar.
-   - Point out the 3 sub-views: **Operating Rules & SLA**, **Assignment Matrix**, and **Public Holidays**.
-   - On the Operating Rules tab, toggle the working day pills (Sun through Sat) for a brand or toggle **"Open on Holidays"**.
-   - Adjust the **Min Staff** number and click **"Save Rule"**. Notice the toast reporting the draft conflict re-synchronization.
-
-2. **Public Holidays**:
-   - Switch to the **Public Holidays** tab to view the Nov–Dec 2026 holidays (Guru Nanak Jayanti, Christmas, New Year's Eve, etc.).
-
----
-
-#### Phase 6: Safe Roster Publishing (`/roster`)
-
-1. **Guard Against Unresolved Conflicts**:
-   - Return to **"Monthly Roster"** (`/roster`).
-   - Click the **"Publish Roster"** button in the header.
-   - Because open conflicts remain, the **Publish Modal** halts the publication:
-     > **Unresolved Conflicts Detected**  
-     > *There are X open conflict(s) remaining in this roster.*
-   - Point out that this prevents accidental release of understaffed schedules to client brands.
-
-2. **Force Publish**:
-   - Click **"Force Publish Anyway"**.
-   - The roster transitions to **`PUBLISHED`** status (marked by the emerald badge).
-   - Regenerate and entry edit controls lock into read-only mode, guaranteeing audit integrity.
-
----
-
-### End of Stage Demo
-This concludes the full demonstration of Syncron's enterprise-grade automated roster scheduling system.
+### 5. Safe Roster Publishing
+- Navigate to **Monthly Roster** (`/roster?month=12&year=2026`).
+- Click **Publish Roster**.
+- The modal halts publication because 18 open conflicts exist:
+  - `"Cannot publish roster with 18 open conflict(s). Review conflicts in the Conflict Center or force publish."`
+- Click **Force Publish Anyway**:
+  - Roster status transitions to **`PUBLISHED`**.
+  - Generation and shift edit actions are locked to prevent unintended modifications.
