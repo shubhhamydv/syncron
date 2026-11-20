@@ -3,7 +3,20 @@
  * Connects to the Express backend (default: http://localhost:4000/api).
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+function getApiBase(): string {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (!envUrl) return 'http://localhost:4000/api';
+  let url = envUrl.trim();
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+  if (!url.endsWith('/api')) {
+    url = `${url.replace(/\/+$/, '')}/api`;
+  }
+  return url;
+}
+
+const API_BASE = getApiBase();
 
 export interface ApiError {
   status: number;
