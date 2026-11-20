@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, getApiBase } from '@/lib/api';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export const HealthBanner: React.FC = () => {
@@ -18,7 +18,7 @@ export const HealthBanner: React.FC = () => {
       <div className="flex items-center gap-2">
         <AlertTriangle className="w-4 h-4 shrink-0 text-white animate-pulse" />
         <span>
-          <strong>Backend API Unreachable:</strong> Cannot reach {import.meta.env.VITE_API_URL || 'http://localhost:4000/api'}. Ensure the Express server is running.
+          <strong>Backend API Unreachable:</strong> Cannot reach {getApiBase()}. Ensure the Express server is running.
         </span>
       </div>
       <button

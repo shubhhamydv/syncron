@@ -3,10 +3,18 @@
  * Connects to the Express backend (default: http://localhost:4000/api).
  */
 
-function getApiBase(): string {
+export function getApiBase(): string {
   const envUrl = import.meta.env.VITE_API_URL;
-  if (!envUrl) return 'http://localhost:4000/api';
+  if (!envUrl) {
+    return import.meta.env.PROD
+      ? 'https://syncron-server.onrender.com/api'
+      : 'http://localhost:4000/api';
+  }
   let url = envUrl.trim();
+  // If Render injected bare internal service name 'syncron-server' without domain
+  if (url === 'syncron-server' || (!url.includes('.') && !url.includes('localhost') && !url.startsWith('http'))) {
+    url = `${url}.onrender.com`;
+  }
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = `https://${url}`;
   }
