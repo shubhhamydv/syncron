@@ -6,7 +6,7 @@ services:
     plan: free
     rootDir: server
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm run migrate:deploy && npm run seed && npm start
+    startCommand: npx prisma db push --skip-generate && npm run seed && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
